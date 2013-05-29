@@ -1,5 +1,17 @@
 /*
  BulbdialClock.ino
+
+Updates 2013 William B Phelps:
+ - advance hour hand at minute>30
+ - keep time as signed long instead of hr, min, sec
+ - light 2 LED's while setting seconds, minutes to show odd numbers
+ - lower low brightness
+Todo:
+ - stop time update for negative second adjustment
+ - time setting button repeat
+ - auto dim/bright
+ - fade hour hand change
+ - GPS instead of Chronodot
  
  Default software for the Bulbdial Clock kit designed by
  Evil Mad Scientist Laboratories: http://www.evilmadscientist.com/go/bulbdialkit
@@ -7,7 +19,7 @@
  Updated to work with Arduino 1.0 by Ray Ramirez
  Also requires Time library:  http://www.arduino.cc/playground/Code/Time
  
- Target: ATmega168, clock at 16 MHz.
+ Target: ATmega328, clock at 16 MHz (Arduino Duemilanove w/328)
  
  Version 1.0.1 - 1/14/2012
  Copyright (c) 2009 Windell H. Oskay.  All right reserved.
@@ -50,6 +62,7 @@
 
 // "Factory" default configuration can be configured here:
 #define MainBrightDefault 8
+#define MainBrightOffset 31
 
 #define RedBrightDefault 63  // Use 63, default, for kits with monochrome LEDs!
 #define GreenBrightDefault 63
@@ -203,7 +216,7 @@ boolean getPCtime() {
   // if time sync available from serial port, update time and return true
   while(Serial.available() >=  TIME_MSG_LEN ){  // time message consists of a header and ten ascii digits
     if( Serial.read() == TIME_HEADER ) {
-      time_t pctime = 0;
+      atime_t pctime = 0;
       for(int i=0; i < TIME_MSG_LEN -1; i++){
         char c= Serial.read();
         if( c >= '0' && c <= '9'){
@@ -255,9 +268,10 @@ const byte HrHi[12]  = {
 const byte HrLo[12]  = {
   1,10,10, 2, 6,10,10, 3, 4,10,10, 5};
 
-byte SecNow;
-byte MinNow;
-byte HrNow;
+//int8_t SecNow;
+//int8_t MinNow;
+//int8_t HrNow;
+long timeNow;
 byte HrDisp,MinDisp, SecDisp;
 
 #define EELength 7
@@ -269,8 +283,8 @@ byte MinBright;
 byte SecBright;
 byte MainBright;
 
-unsigned long LastTime;
-unsigned long TimeNow;
+unsigned long millisThen;
+unsigned long millisNow;
 byte TimeSinceButton;
 byte LastSavedBrightness;
 
@@ -279,6 +293,7 @@ byte PINDLast;
 // Modes:
 byte CCW;
 byte ExtRTC;
+byte UpdateRTC;  // set to force RTC update
 byte SleepMode;
 byte FadeMode;
 
@@ -303,7 +318,7 @@ byte MomentaryOverrideMinus;
 byte MomentaryOverrideZ;
 
 unsigned long  prevtime;
-unsigned long millisCopy;
+unsigned long MillisNow;
 
 byte SecNext,  MinNext, HrNext;
 byte h0, h1, h2, h3, h4, h5;
@@ -387,7 +402,7 @@ void EEReadSettings (void) {  // TODO: Detect ANY bad values, not just 255.
 void EESaveSettings (void){
   //EEPROM.write(Addr, Value);
 
-  // Careful if you use  this function: EEPROM has a limited number of write
+  // Careful if you use this function: EEPROM has a limited number of write
   // cycles in its life.  Good for human-operated buttons, bad for automation.
 
   EEPROM.write(0, MainBright);
@@ -406,7 +421,12 @@ void EESaveSettings (void){
 }
 
 
-void normalTimeDisplay(void) {
+void NormalTimeDisplay(void) {
+byte SecNow, MinNow, HrNow;
+
+  HrNow = timeNow/3600;  // hours
+  MinNow = timeNow/60%60;  // minutes
+  SecNow = timeNow%60;  // seconds
 
   SecDisp = (SecNow + 30);  // Offset by 30 s to project *shadow* in the right place.
   if ( SecDisp > 59)
@@ -424,9 +444,15 @@ void normalTimeDisplay(void) {
 
   MinNext = MinDisp + 1;
   if (MinNext > 29)
-    MinNext = 0;
+//    MinNext = 0;
+    MinNext -= 30;
 
   HrDisp = (HrNow + 6);  // Offset by 6 h to project *shadow* in the right place.
+  
+  if (FadeMode == 2) {
+    if ( (SettingTime == 0) && (MinNow > 30) )  // If half the hour has gone by, (wbp)
+      HrDisp += 1;  // advance the hour hand (wbp)
+  }
 
   if ( HrDisp > 11)
     HrDisp -= 12;
@@ -438,60 +464,184 @@ void normalTimeDisplay(void) {
 }
 
 
-void normalFades(void) {
+void NormalFades(void) {
+byte SecNow, MinNow, HrNow;
 
-  if (FadeMode){
+  HrNow = timeNow/3600;  // hours
+  MinNow = timeNow/60%60;  // minutes
+  SecNow = timeNow%60;  // seconds
+
+  switch (FadeMode)
+  {
+  case 0:  // no fading
+    HrFade1 = tempfade;
+    MinFade1 = tempfade;
+    SecFade1 = tempfade;
+    break;
+  case 1:  // original fading
+  case 2:  // move hour hand at 31 minutes
     // Normal time display
-    if (SecNow & 1)  // ODD time
+    if (SecNow & 1)  // ODD second
     {
-      SecFade2 = (63*((millisCopy - LastTime))/1000);
+      SecFade2 = (63*((millisNow - millisThen))/1000);
       SecFade1 = 63 - SecFade2;
     }
 
-    if (MinNow & 1)  // ODD time
+    if (MinNow & 1)  // ODD minute
     {
-      if (SecNow == 59){
+      if ((SecNow == 59) || SettingTime) {
         MinFade2 = SecFade2;
         MinFade1 = SecFade1;
       }
     }
 
-    if (MinNow == 59)  // End of the hour, only:
+    if ( ((FadeMode == 1) && (MinNow == 59)) || ((FadeMode == 2) && (MinNow == 30)) )  // end of the hour or second half of the hour (wbp)
     {
       if (SecNow == 59){
         HrFade2 = SecFade2;
         HrFade1 = SecFade1;
       }
     }
+    break;
+  case 3:  // continuous fading
+    SecFade2 = (63*(millisNow - millisThen)/2000);
+    if (SecNow & 1)  // Odd second
+      SecFade2 += 32;
+    SecFade1 = 63 - SecFade2;      
+    MinFade2 = (63*SecNow/120);  // fade minute hand slowly
+    if (MinNow & 1)  // odd minute
+      MinFade2 += 32;
+    MinFade1 = 63 - MinFade2;
+    HrFade2 = (63*MinNow/60);  // fade hour hand slowly
+    HrFade1 = 63 - HrFade2;      break;
+    break;
   }
-  else {  // no fading
+}
 
-    HrFade1 = tempfade;
-    MinFade1 = tempfade;
-    SecFade1 = tempfade;
+void AlignDisplay(void)
+{
+  if (AlignMode & 1) {  // ODD mode, auto-advances
+
+    byte AlignRateAbs;  // Absolute value of AlignRate
+
+    if (AlignRate >= 0){
+      AlignRateAbs = AlignRate + 1;
+    }
+    else
+      AlignRateAbs = -AlignRate;
+
+    // Serial.println(AlignRateAbs,DEC);
+
+    AlignLoopCount++;
+
+    byte ScaleRate;
+    if (AlignRateAbs > 2)
+      ScaleRate = 10;
+    else if (AlignRateAbs == 2)
+      ScaleRate = 50;
+    else
+      ScaleRate = 250;
+
+    if (AlignLoopCount > ScaleRate) {
+      AlignLoopCount = 0;
+
+      if (AlignRate >= 0)
+        IncrAlignVal();
+      else
+        DecrAlignVal();
+
+    }
+  }
+
+  SecDisp = (AlignValue + 15);  // Offset by 30 s to project *shadow* in the right place.
+  if ( SecDisp > 29)
+    SecDisp -= 30;
+
+  MinDisp = SecDisp;
+  HrDisp = (AlignValue + 6);  // Offset by 6 h to project *shadow* in the right place.
+
+  if ( HrDisp > 11)
+    HrDisp -= 12;
+}
+
+
+void OptionDisplay(void)
+{
+#define StartOptTimeLimit 30
+  if (StartingOption < StartOptTimeLimit) {
+
+    AlignLoopCount++;  // Borrowing a counter variable...
+
+    if (AlignLoopCount > 3) {
+      AlignLoopCount = 0;
+      StartingOption++;
+
+      if (OptionMode == 1)  // Red (upper) ring color balance
+      {
+        HrDisp++;
+        if (HrDisp > 11)
+          HrDisp = 0;
+      }
+      if (OptionMode == 2)  // Green (middle) ring color balance
+      {
+        MinDisp++;
+        if (MinDisp > 29)
+          MinDisp = 0;
+      }
+      if (OptionMode == 3)  // Blue (lower) ring color balance
+      {
+        SecDisp++;
+        if (SecDisp > 29)
+          SecDisp = 0;
+      }
+      if (OptionMode >= 4)  // CW vs CCW OR fade mode
+      {
+        StartingOption = StartOptTimeLimit;  // Exit this loop
+      }
+    }
+  }  // end "if (StartingOption < StartOptTimeLimit){}"
+
+  if (StartingOption >= StartOptTimeLimit) {
+
+    if (OptionMode == 4)
+    {
+      MinDisp++;
+      if (MinDisp > 29)
+        MinDisp = 0;
+      SecDisp = MinDisp;
+    }
+    else
+      NormalTimeDisplay();
+
   }
 }
 
 
-void RTCsetTime(byte hourIn, byte minuteIn, byte secondIn)
+void RTCsetTime(unsigned long timeIn)
 {
+byte secondIn, minuteIn, hourIn;
+
+  hourIn = timeIn/3600;  // hours
+  minuteIn = timeIn/60%60;  // minutes
+  secondIn = timeIn%60;  // seconds
+  
   Wire.beginTransmission(104);  // 104 is DS3231 device address
   Wire.write((byte)0);  // start at register 0
 
   byte ts = secondIn / 10;
-  byte os = secondIn - ts*10;
+  byte os = secondIn % 10;
   byte ss = (ts << 4) + os;
 
   Wire.write(ss);  // Send seconds as BCD
 
-  byte tm = minuteIn /10;
-  byte om = minuteIn - tm*10;
+  byte tm = minuteIn / 10;
+  byte om = minuteIn % 10;
   byte sm = (tm << 4 ) | om;
 
   Wire.write(sm);  // Send minutes as BCD
 
-  byte th = hourIn /10;
-  byte oh = hourIn - th*10;
+  byte th = hourIn / 10;
+  byte oh = hourIn % 10;
   byte sh = (th << 4 ) | oh;
 
   Wire.write(sh);  // Send hours as BCD
@@ -511,8 +661,9 @@ byte RTCgetTime()
   Wire.requestFrom(104, 3);  // request three bytes (seconds, minutes, hours)
 
   int seconds, minutes, hours;
-  unsigned int temptime1, temptime2;
+  unsigned int timeRTC;
   byte updatetime = 0;
+  unsigned long tNow;
 
   while(Wire.available())
   {
@@ -534,37 +685,26 @@ byte RTCgetTime()
     seconds = (((seconds & 0b11110000)>>4)*10 + (seconds & 0b00001111));  // convert BCD to decimal
     minutes = (((minutes & 0b11110000)>>4)*10 + (minutes & 0b00001111));  // convert BCD to decimal
     hours = (((hours & 0b00110000)>>4)*10 + (hours & 0b00001111));  // convert BCD to decimal (assume 24 hour mode)
+    timeRTC = 3600*hours + 60*minutes + seconds;  // Values read from RTC
+    if (timeRTC > 43200)
+      timeRTC -= 43200;  // 12 hour time in seconds
 
     // Optional: report time::
     // Serial.print(hours); Serial.print(":"); Serial.print(minutes); Serial.print(":"); Serial.println(seconds);
 
-    if ((minutes) && (MinNow) ){
-      temptime1 = 3600*hours + 60*minutes + seconds;  // Values read from RTC
-      temptime2 = 3600*HrNow + 60*MinNow + SecNow;    // Internally stored time estimate.
-
-      if (temptime1 > temptime2)
-      {
-        if ((temptime1 - temptime2) > 2)
-          updatetime = 1;
-      }
-      else
-      {
-        if ((temptime2 - temptime1) > 2)
-          updatetime = 1;
-      }
+//    if ((minutes) && (MinNow) ) {
+    if (minutes) {  // don't adjust if top of the hour
+      if (abs(timeRTC - timeNow) > 2)
+        updatetime = 1;
     }
 
-    if (ExtRTC == 0)
+    if (UpdateRTC)  // First time since power up
       updatetime = 1;
 
     if (updatetime)
     {
-      SecNow = seconds;
-      MinNow = minutes;
-      HrNow = hours;
-
-      if ( HrNow > 11)  // Convert 24-hour mode to 12-hour mode
-        HrNow -= 12;
+      timeNow = timeRTC;  // update time from RTC 
+      UpdateRTC = 0;  // time has been set
     }
   }
 
@@ -587,10 +727,11 @@ void setup()  // run once, when the sketch starts
 
   PORTD = buttonmask;  // Pull-up resistors for buttons
 
-  SecNow = 0;
-  HrNow = 0;
-  MinNow = 0;
-  TimeNow = millis();
+//  SecNow = 0;
+//  HrNow = 0;
+//  MinNow = 0;
+  timeNow = 0;
+  millisNow = millis();
   SecDisp = 0;
   MinDisp = 0;
 
@@ -622,7 +763,7 @@ void setup()  // run once, when the sketch starts
   SleepMode = 0;
 
   SettingTime = 0;  // Normally 0.
-  // 1: hours, 2: minutes, 3: seconds, 4: not setting time
+  // 1: hours, 2: minutes, 3: seconds, 4: seconds backward (stops ticking clock)
 
   AlignMode  = 0;  // Normally 0.
   OptionMode  = 0;  // Normally 0.
@@ -641,6 +782,7 @@ void setup()  // run once, when the sketch starts
    */
 
   ExtRTC = 0;
+  UpdateRTC = 1;  // Force RTC update if there is one
 
   // Check if RTC is available, and use it to set the time if so.
   ExtRTC = RTCgetTime();
@@ -684,6 +826,7 @@ void DecrAlignVal (void)
 }
 
 
+// ==============================  Main Loop  ============================== //
 void loop()
 {
   byte HighLine, LowLine;
@@ -747,36 +890,31 @@ void loop()
             }
             if (OptionMode == 5)
             {
-              FadeMode = 1;
+              if (FadeMode < 3)
+                FadeMode ++;
             }
 
           }
           else if (SettingTime) {
-
+            
             if (SettingTime == 1)
-            {
-              HrNow++;
-              if (HrNow > 11)
-                HrNow = 0;
-            }
+              timeNow += 3600;
             if (SettingTime == 2)
-            {
-              MinNow++;
-              if (MinNow > 59)
-                MinNow = 0;
+              timeNow += 60;
+            if (SettingTime > 2) { // could be 3 or 4
+              timeNow ++;
+              SettingTime = 3;  // allow clock to tick
             }
-            if (SettingTime == 3)
-            {
-              SecNow++;
-              if (SecNow > 59)
-                SecNow = 0;
-            }
+            
+            if (timeNow > 43200)
+              timeNow -= 43200;  // 12 hour time in seconds
+           
           }
           else {
             // Brightness control mode
             MainBright++;
             if (MainBright > 8)
-              MainBright = 1;
+              MainBright = 1;  
           }
         }
       }
@@ -832,35 +970,27 @@ void loop()
             }
             if (OptionMode == 5)
             {
-              FadeMode = 0;
+              if (FadeMode > 0)
+                FadeMode --;
             }
 
           }
           else if (SettingTime) {
             if (SettingTime == 1)
-            {
-              if (HrNow > 0)
-                HrNow--;
-              else
-                HrNow = 11;
-            }
+              timeNow -= 3600;
             if (SettingTime == 2)
-            {
-              if (MinNow > 0)
-                MinNow--;
-              else
-                MinNow = 59;
+              timeNow -= 60;
+            if (SettingTime > 2) {  // could be 3 or 4
+              timeNow --;
+              SettingTime = 4;  // stop ticking if setting seconds back
             }
-            if (SettingTime == 3)
-            {
-              if (SecNow > 0)
-                SecNow--;
-              else
-                SecNow = 59;
-            }
+            
+            if (timeNow < 0)
+              timeNow += 43200;  // wrap
+
           }
           else {  // Normal brightness adjustment mode
-            if (MainBright > 1)
+            if (MainBright > 1) 
               MainBright--;
             else
               MainBright = 8;
@@ -916,21 +1046,12 @@ void loop()
   }
 
   PINDLast = PINDcopy;
-  millisCopy = millis();
+  millisNow = millis();
 
-  // The next if statement detects and deals with the millis() rollover.
-  // This introduces an error of up to  1 s, about every 50 days.
-  //
-  // (If you have the standard quartz timebase, this will not dominate the inaccuracy.
-  // If you have the optional RTC, this error will be corrected next time we read the
-  // time from the RTC.)
-
-  if (millisCopy < LastTime)
-    LastTime = 0;
-
-  if ((millisCopy - LastTime) >= 1000)
+  // Since millisNow & millisThen are both unsigned long, this will work correctly even when millis() wraps
+  if ((millisNow - millisThen) >= 1000)  // has 1 second gone by?
   {
-    LastTime += 1000;
+    millisThen += 1000;  // do this again in 1 second
 
     // Check to see if any buttons are being held down:
 
@@ -992,7 +1113,7 @@ void loop()
       if ( FactoryResetDisable == 0){
         ApplyDefaults();
         EESaveSettings();
-        AllLEDsOff();  // Blink LEDs off to indicate restoring data
+        AllLEDsOff();  // Blink LEDs off to indicate saving data
         delay(100);
       }
       else
@@ -1007,7 +1128,6 @@ void loop()
         }
       }
     }
-
 
     if (HoldOption == 3)
     {
@@ -1036,9 +1156,11 @@ void loop()
         // If we were in any of these modes, let's now return us to normalcy.
         // IF we are exiting time-setting mode, save the time to the RTC, if present:
         if (SettingTime && ExtRTC) {
-          RTCsetTime(HrNow,MinNow,SecNow);
+//          RTCsetTime(HrNow,MinNow,SecNow);
+          RTCsetTime(timeNow);
           AllLEDsOff();  // Blink LEDs off to indicate saving time
           delay(100);
+///          UpdateRTC = 1;  // sync time with RTC now
         }
 
         if (OptionMode) {
@@ -1059,132 +1181,26 @@ void loop()
 
     }
 
-    // Note: this section could act funny if you hold the buttons for 256 or more seconds.
-    // So... um... don't do that.  :P
-
-    SecNow++;
-
-    if (SecNow > 59){
-      SecNow = 0;
-      MinNow++;
-
-      if ((SettingTime == 0) && ExtRTC)  // Check value at RTC ONCE PER MINUTE, if enabled.
-        RTCgetTime();                    // Do not check RTC time, if we are in time-setting mode.
+    if (SettingTime < 4) { // if not setting seconds back
+      timeNow++;  // the clock ticks...
+      if (timeNow>43200)
+       timeNow -= 43200;
+      RefreshTime = 1;
     }
-
-    if (MinNow > 59){
-      MinNow = 0;
-      HrNow++;
-
-      if  (HrNow > 11)
-        HrNow = 0;
-    }
-
-    RefreshTime = 1;
 
   }
+  
   if (RefreshTime) {
     // Calculate which LEDs to light up to give the correct shadows:
 
-    if (AlignMode){
-
-      if (AlignMode & 1) {  // ODD mode, auto-advances
-
-        byte AlignRateAbs;  // Absolute value of AlignRate
-
-        if (AlignRate >= 0){
-          AlignRateAbs = AlignRate + 1;
-        }
-        else
-          AlignRateAbs = -AlignRate;
-
-        // Serial.println(AlignRateAbs,DEC);
-
-        AlignLoopCount++;
-
-        byte ScaleRate;
-        if (AlignRateAbs > 2)
-          ScaleRate = 10;
-        else if (AlignRateAbs == 2)
-          ScaleRate = 50;
-        else
-          ScaleRate = 250;
-
-        if (AlignLoopCount > ScaleRate) {
-          AlignLoopCount = 0;
-
-          if (AlignRate >= 0)
-            IncrAlignVal();
-          else
-            DecrAlignVal();
-
-        }
-      }
-
-      SecDisp = (AlignValue + 15);  // Offset by 30 s to project *shadow* in the right place.
-      if ( SecDisp > 29)
-        SecDisp -= 30;
-
-      MinDisp = SecDisp;
-      HrDisp = (AlignValue + 6);  // Offset by 6 h to project *shadow* in the right place.
-
-      if ( HrDisp > 11)
-        HrDisp -= 12;
+    if (AlignMode) {
+      AlignDisplay();
     }
     else if (OptionMode) {  // Option setting mode
-
-#define StartOptTimeLimit 30
-        if (StartingOption < StartOptTimeLimit) {
-
-        AlignLoopCount++;  // Borrowing a counter variable...
-
-        if (AlignLoopCount > 3) {
-          AlignLoopCount = 0;
-          StartingOption++;
-
-          if (OptionMode == 1)  // Red (upper) ring color balance
-          {
-            HrDisp++;
-            if (HrDisp > 11)
-              HrDisp = 0;
-          }
-          if (OptionMode == 2)  // Green (middle) ring color balance
-          {
-            MinDisp++;
-            if (MinDisp > 29)
-              MinDisp = 0;
-          }
-          if (OptionMode == 3)  // Blue (lower) ring color balance
-          {
-            SecDisp++;
-            if (SecDisp > 29)
-              SecDisp = 0;
-          }
-          if (OptionMode >= 4)  // CW vs CCW OR fade mode
-          {
-            StartingOption = StartOptTimeLimit;  // Exit this loop
-          }
-        }
-      }  // end "if (StartingOption < StartOptTimeLimit){}"
-
-      if (StartingOption >= StartOptTimeLimit) {
-
-        if (OptionMode == 4)
-        {
-          MinDisp++;
-          if (MinDisp > 29)
-            MinDisp = 0;
-          SecDisp = MinDisp;
-        }
-        else
-          normalTimeDisplay();
-
-      }
+      OptionDisplay();
     }
     else    {  // Regular clock display
-
-      normalTimeDisplay();
-
+      NormalTimeDisplay();
     }
 
     h3 = HrDisp;
@@ -1235,8 +1251,8 @@ void loop()
 
   }
 
-  SecFade2 = 0;
-  SecFade1 = 63;
+  SecFade2 = 0;  // 2nd LED dim
+  SecFade1 = 63;  // 1st LED bright
 
   MinFade2 = 0;
   MinFade1 = 63;
@@ -1247,21 +1263,25 @@ void loop()
   if (SettingTime)  // i.e., if (SettingTime is nonzero)
   {
 
-    HrFade1 = 5;
+    HrFade1 = 5;  // make them all dim
     MinFade1 = 5;
     SecFade1 = 5;
 
     if (SettingTime == 1)  // hours
     {
-      HrFade1  = tempfade;
+      HrFade1  = tempfade;  // make hours bright
     }
     if (SettingTime == 2)  // minutes
     {
-      MinFade1  = tempfade;
+      MinFade1  = tempfade;  // make minutes bright
+      if (timeNow/60 & 1)  // odd minutes 
+        MinFade2 = tempfade;  // 2nd LED on as well (wbp)
     }
-    if (SettingTime == 3)  // seconds
+    if (SettingTime > 2)  // seconds
     {
-      SecFade1 = tempfade;
+      SecFade1 = tempfade;  // make seconds bright
+      if (timeNow & 1)  // odd seconds
+        SecFade2 = tempfade;  // 2nd LED on as well (wbp)
     }
 
   }
@@ -1311,15 +1331,14 @@ void loop()
           HrFade1 = 0;
         }
         else
-          normalFades();
+          NormalFades();
       }
     }
 
   }
   else
   {
-    normalFades();
-
+    NormalFades();
   }
 
   byte tempbright = MainBright;
@@ -1328,11 +1347,11 @@ void loop()
     tempbright = 0;
 
   if (VCRmode){
-    if (SecNow & 1)
+    if (timeNow & 1)
       tempbright = 0;
   }
 
-  d0 = HourBright*HrFade1*tempbright >> 7;
+  d0 = HourBright*HrFade1*tempbright >> 7;  // hbrt * fade * brt / 128
   d1 = HourBright*HrFade2*tempbright >> 7;
   d2 = MinBright*MinFade1*tempbright >> 7;
   d3 = MinBright*MinFade2*tempbright >> 7;
@@ -1388,10 +1407,10 @@ void loop()
       AllLEDsOff();
     }
 
-    if (MainBright < 8){
-      delayTime((8-MainBright)<<5);
-      delayTime((8-MainBright)<<5);
-      delayTime((8-MainBright)<<5);
+    if (MainBright < 8){  // delay (8-brt)*32 (times 3)
+      delayTime(((8-MainBright)<<5)+MainBrightOffset);
+      delayTime(((8-MainBright)<<5)+MainBrightOffset);
+      delayTime(((8-MainBright)<<5)+MainBrightOffset);
     }
 
     i++;
@@ -1406,12 +1425,15 @@ void loop()
   if( getPCtime()) {  // try to get time sync from pc
 
     // Set time to that given from PC.
-    MinNow = minute();
-    SecNow = second();
-    HrNow = hour();
+//    MinNow = minute();
+//    SecNow = second();
+//    HrNow = hour();
+    timeNow = hour()*3600 + minute()*60 + second();
 
-    if ( HrNow > 11)  // Convert 24-hour mode to 12-hour mode
-      HrNow -= 12;
+//    if ( HrNow > 11)  // Convert 24-hour mode to 12-hour mode
+//      HrNow -= 12;
+    if (timeNow > 43200)
+      timeNow -= 43200;  // 12 hour time in seconds
 
     // Print confirmation
     Serial.println("Clock synced at: ");
@@ -1422,7 +1444,7 @@ void loop()
       if ( prevtime != now() )
       {
         if (ExtRTC)
-          RTCsetTime(HrNow,MinNow,SecNow);
+          RTCsetTime(timeNow);
 
         timeStatus();  // refresh the Date and time properties
         digitalClockDisplay( );  // update digital clock
