@@ -511,7 +511,7 @@ unsigned long msNow;
   case 3:  // continuous fading
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
-    SecFade2 = msNow*63/1000;
+    SecFade2 = msNow*63/2000;
     SecFade1 = 63 - SecFade2;
     if (MinNow & 1)  // Odd minute
         SecNow += 60;
