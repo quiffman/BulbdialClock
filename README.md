@@ -1,10 +1,11 @@
 This is a fork of the original sketch for the Bulbdial Clock sold by http://evilmadscience.com.
 
-This version includes 4 modes of fading:
+This version now includes FIVE modes of fading:
   0 - no fading
   1 - original fading 
   2 - move hour hand ahead at 31 minutes after the hour
   3 - continuous fading of all 3 hands
+  4 - continuous logarithmic fading - very smooth!
   
 To select the Fade mode, enter the "Optional" configuration mode by holded + and Z buttons
 for 3 seconds.  Then select one of the 4 modes using the + and - buttons.  The buttons do 

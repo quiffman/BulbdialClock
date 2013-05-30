@@ -6,11 +6,12 @@ Updates 2013 William B Phelps:
  - keep time as signed long instead of hr, min, sec
  - light 2 LED's while setting seconds, minutes to show odd numbers
  - lower low brightness
+ - fade hour hand change
+ - logarithmic fade option
 Todo:
  - stop time update for negative second adjustment
  - time setting button repeat
  - auto dim/bright
- - fade hour hand change
  - GPS instead of Chronodot
  
  Default software for the Bulbdial Clock kit designed by
@@ -54,7 +55,7 @@ Todo:
  * Blue brightness (range: 0-63)    Default: 63
  
  * Time direction (Range: 0,1)      Default: 0  (Clockwise)
- * Fade style (Range: 0,1)         Default: 1  (Fade enabled)
+ * Fade style (Range: 0,3)         Default: 1  (Fade enabled)
  
  * Alignment mode                  Default: 0
  
@@ -70,6 +71,7 @@ Todo:
 
 #define CCWDefault 0
 #define FadeModeDefault 1
+#define FadeModes 4
 
 #define AlignModeDefault 0
 
@@ -100,7 +102,7 @@ Todo:
 #define AllLEDsOff();  LED_B_Off(); LED_C_Off(); LED_D_Off();
 
 #define tempfade 63
-
+#define fadeGamma 1.3
 
 void TakeHigh(byte LEDline)
 {
@@ -326,6 +328,7 @@ byte l0, l1, l2, l3, l4, l5;
 byte d0, d1, d2, d3, d4, d5;
 byte HrFade1, HrFade2, MinFade1, MinFade2, SecFade1, SecFade2;
 
+byte FadeConv[200];
 
 void ApplyDefaults (void) {
   /*
@@ -466,7 +469,9 @@ byte SecNow, MinNow, HrNow;
 
 void NormalFades(void) {
 byte SecNow, MinNow, HrNow;
+unsigned long msNow;
 
+  msNow = millisNow - millisThen;
   HrNow = timeNow/3600;  // hours
   MinNow = timeNow/60%60;  // minutes
   SecNow = timeNow%60;  // seconds
@@ -483,7 +488,7 @@ byte SecNow, MinNow, HrNow;
     // Normal time display
     if (SecNow & 1)  // ODD second
     {
-      SecFade2 = (63*((millisNow - millisThen))/1000);
+      SecFade2 = (63*msNow/1000);
       SecFade1 = 63 - SecFade2;
     }
 
@@ -504,15 +509,27 @@ byte SecNow, MinNow, HrNow;
     }
     break;
   case 3:  // continuous fading
-    SecFade2 = (63*(millisNow - millisThen)/2000);
     if (SecNow & 1)  // Odd second
-      SecFade2 += 32;
-    SecFade1 = 63 - SecFade2;      
-    MinFade2 = (63*SecNow/120);  // fade minute hand slowly
-    if (MinNow & 1)  // odd minute
-      MinFade2 += 32;
+      msNow += 1000;  
+    SecFade2 = msNow*63/1000;
+    SecFade1 = 63 - SecFade2;
+    if (MinNow & 1)  // Odd minute
+        SecNow += 60;
+    MinFade2 = SecNow*63/120;  // fade minute hand slowly
     MinFade1 = 63 - MinFade2;
-    HrFade2 = (63*MinNow/60);  // fade hour hand slowly
+    HrFade2 = MinNow*63/60;  // fade hour hand slowly
+    HrFade1 = 63 - HrFade2;      break;
+    break;
+  case 4:  // continuous logarithmic fading
+    if (SecNow & 1)  // Odd second
+      msNow += 1000;  
+    SecFade2 = FadeConv[msNow/10];  // 0 to 63
+    SecFade1 = 63 - SecFade2;      
+    if (MinNow & 1)  // Odd minute
+      SecNow += 60;
+    MinFade2 = FadeConv[SecNow*5/3];  // fade minute hand slowly
+    MinFade1 = 63 - MinFade2;
+    HrFade2 = FadeConv[MinNow*10/3];  // fade hour hand slowly
     HrFade1 = 63 - HrFade2;      break;
     break;
   }
@@ -588,13 +605,13 @@ void OptionDisplay(void)
         if (MinDisp > 29)
           MinDisp = 0;
       }
-      if (OptionMode == 3)  // Blue (lower) ring color balance
+      if (OptionMode == 3)  // Blue (lower) ring color balance (wbp)
       {
         SecDisp++;
         if (SecDisp > 29)
           SecDisp = 0;
       }
-      if (OptionMode >= 4)  // CW vs CCW OR fade mode
+      if (OptionMode > 3)  // CW vs CCW OR fade mode
       {
         StartingOption = StartOptTimeLimit;  // Exit this loop
       }
@@ -603,7 +620,7 @@ void OptionDisplay(void)
 
   if (StartingOption >= StartOptTimeLimit) {
 
-    if (OptionMode == 4)
+    if (OptionMode == 4)  // CW vs CCW 
     {
       MinDisp++;
       if (MinDisp > 29)
@@ -791,6 +808,11 @@ void setup()  // run once, when the sketch starts
   if (ExtRTC)  // If time is already set from the RTC...
     VCRmode = 0;
 
+  // Compute logarithmic brightness values for fade just once - doing it on the fly causes flicker
+  for(int i=0; i <= 200; i++) {
+    FadeConv[i] = pow(i/200.0,fadeGamma)*64.0;
+  }
+
 }  // End Setup
 
 
@@ -890,7 +912,7 @@ void loop()
             }
             if (OptionMode == 5)
             {
-              if (FadeMode < 3)
+              if (FadeMode < FadeModes)
                 FadeMode ++;
             }
 
@@ -1299,7 +1321,7 @@ void loop()
       else
         MinFade1 = tempfade;
     }
-    else{  // Must be OptionMode....
+    else {  // Must be OptionMode....
       if (StartingOption < StartOptTimeLimit)
       {
         if (OptionMode == 1)
