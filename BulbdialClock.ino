@@ -411,18 +411,26 @@ void EEReadSettings (void) {  // TODO: Detect ANY bad values, not just 255.
 
 }
 
+// reduce EE writes by checking current value first
+void EEUpdate(int loc, byte val)
+{
+  byte c = EEPROM.read(loc);
+  if (c!=val)
+    EEPROM.write(loc, val);
+}
+
 void EESaveSettings (void){
   //EEPROM.write(Addr, Value);
 
   // Careful if you use this function: EEPROM has a limited number of write
   // cycles in its life.  Good for human-operated buttons, bad for automation.
 
-  EEPROM.write(0, MainBright);
-  EEPROM.write(1, HourBright);
-  EEPROM.write(2, MinBright);
-  EEPROM.write(3, SecBright);
-  EEPROM.write(4, CCW);
-  EEPROM.write(5, FadeMode);
+  EEUpdate(0, MainBright);
+  EEUpdate(1, HourBright);
+  EEUpdate(2, MinBright);
+  EEUpdate(3, SecBright);
+  EEUpdate(4, CCW);
+  EEUpdate(5, FadeMode);
 
   LastSavedBrightness = MainBright;
 
@@ -817,10 +825,10 @@ void setup()  // run once, when the sketch starts
   if (ExtRTC)  // If time is already set from the RTC...
     VCRmode = 0;
 
-  // Compute logarithmic brightness values for fade just once - doing it on the fly causes flicker
-  for(int i=0; i <= 200; i++) {
-    FadeConv[i] = pow(i/200.0,fadeGamma)*fadeMax;
-  }
+// Uncomment to compute logarithmic brightness values for fade
+//  for(int i=0; i <= 200; i++) {
+//    FadeConv[i] = pow(i/200.0,fadeGamma)*fadeMax;
+//  }
 
 }  // End Setup
 
@@ -1145,7 +1153,7 @@ void loop()
         ApplyDefaults();
         EESaveSettings();
         AllLEDsOff();  // Blink LEDs off to indicate saving data
-        delay(100);
+        delay(200); // blink longer (wbp)
       }
       else
       {
@@ -1171,7 +1179,7 @@ void loop()
         OptionMode = 0;
         EESaveSettings();  // Save options if exiting option mode!
         AllLEDsOff();      // Blink LEDs off to indicate saving data
-        delay(100);
+        delay(200);  // blink longer (wbp)
       }
       else {
         OptionMode = 1;
@@ -1197,7 +1205,7 @@ void loop()
         if (OptionMode) {
           EESaveSettings();  // Save options if exiting option mode!
           AllLEDsOff();    // Blink LEDs off to indicate saving data
-          delay(100);
+          delay(200);  // blink longer (wbp)
         }
 
         SettingTime = 0;
