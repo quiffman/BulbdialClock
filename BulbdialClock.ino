@@ -832,7 +832,7 @@ void setup()  // run once, when the sketch starts
 //  TCCR1A = (1<<WGM11) | (1<<WGM10);  // set for OCR1A=TOP
   TCCR1B = (1<<WGM12);  // CTC mode with OCR1A as TOP
   TCCR1A = 0;
-  OCR1A = 399;  // 16000000/400 = 40,000 hz
+  OCR1A = 333;  // 16000000/400 = 40,000 hz
 //  OCR1A = 49;  // 2000000/50 = 40,000 hz
   TCNT1 = 0;
   TCCR1B |= (1<<CS10); // connect at 1x to start counter
@@ -867,27 +867,27 @@ void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
   switch(display_select)
   {
     case 0:
-      if (D0 <= display_cnt)
+      if (D0 < display_cnt)
         NextLED();
       break;
     case 1:
-      if (D1 <= display_cnt)
+      if (D1 < display_cnt)
         NextLED();
       break;
     case 2:
-      if (D2 <= display_cnt)
+      if (D2 < display_cnt)
         NextLED();
       break;
     case 3:
-      if (D3 <= display_cnt)
+      if (D3 < display_cnt)
         NextLED();
       break;
     case 4:
-      if (D4 <= display_cnt)
+      if (D4 < display_cnt)
         NextLED();
       break;
     case 5:
-      if (D5 <= display_cnt)
+      if (D5 < display_cnt)
         NextLED();
       break;
     case 6:
@@ -904,46 +904,45 @@ void NextLED(void)
   display_select ++;  // next LED
   if (display_select > select_max)
     display_select = 0;  // wrap back to first LED
-  if (DisplayOn) 
-    switch(display_select)
-    {
-      case 0:
-        if (D0) {
-          TakeHigh(H0);
-          TakeLow(L0);
-        }
-        break;
-      case 1:
-        if (D1) {
-          TakeHigh(H1);
-          TakeLow(L1);
-        }
-        break;
-      case 2:
-        if (D2) {
-          TakeHigh(H2);
-          TakeLow(L2);
-        }
-        break;
-      case 3:
-        if (D3) {
-          TakeHigh(H3);
-          TakeLow(L3);
-        }
-        break;
-      case 4:
-        if (D4) {
-          TakeHigh(H4);
-          TakeLow(L4);
-        }
-        break;
-      case 5:
-        if (D5) {
-          TakeHigh(H5);
-          TakeLow(L5);
-        }
-        break;
-    }
+  switch(display_select)  // now turn the LED on
+  {
+    case 0:
+      if (D0) {
+        TakeHigh(H0);
+        TakeLow(L0);
+      }
+      break;
+    case 1:
+      if (D1) {
+        TakeHigh(H1);
+        TakeLow(L1);
+      }
+      break;
+    case 2:
+      if (D2) {
+        TakeHigh(H2);
+        TakeLow(L2);
+      }
+      break;
+    case 3:
+      if (D3) {
+        TakeHigh(H3);
+        TakeLow(L3);
+      }
+      break;
+    case 4:
+      if (D4) {
+        TakeHigh(H4);
+        TakeLow(L4);
+      }
+      break;
+    case 5:
+      if (D5) {
+        TakeHigh(H5);
+        TakeLow(L5);
+      }
+      break;
+  }
 }
 
 void Blink(long time)  // blink the display to show something happened
@@ -986,16 +985,9 @@ void DecrAlignVal (void)
 }
 
 
-// ==============================  Main Loop  ============================== //
-void loop()
+void CheckButtons(void)
 {
-  byte HighLine, LowLine;
   byte PINDcopy;
-  byte RefreshTime;
-
-  RefreshTime = AlignMode + SettingTime + OptionMode;
-  millisNow = millis();  // what time is it, in ms?
-
   PINDcopy = PIND & buttonmask;
 
   if (PINDcopy != PINDLast)  // Button change detected
@@ -1207,13 +1199,11 @@ void loop()
   }
 
   PINDLast = PINDcopy;
+}
 
-//  millisNow = millis();
-  // Since millisNow & millisThen are both unsigned long, this will work correctly even when millis() wraps
-  if ((millisNow - millisThen) >= 1000)  // has 1 second gone by?
-  {
-    millisThen += 1000;  // do this again in 1 second
 
+void CheckHeld(void)
+{
     // Check to see if any buttons are being held down:
 
     if (( PIND & buttonmask) == buttonmask)
@@ -1333,7 +1323,28 @@ void loop()
       OptionMode = 0;
 
     }
+}
 
+
+// ==============================  Main Loop  ============================== //
+void loop()
+{
+  byte HighLine, LowLine;
+  byte RefreshTime;
+
+  RefreshTime = AlignMode + SettingTime + OptionMode;
+  millisNow = millis();  // what time is it, in ms?
+
+  CheckButtons();
+
+//  millisNow = millis();
+  // Since millisNow & millisThen are both unsigned long, this will work correctly even when millis() wraps
+  if ((millisNow - millisThen) >= 1000)  // has 1 second gone by?
+  {
+    millisThen += 1000;  // do this again in 1 second
+
+    CheckHeld();
+    
     if (SettingTime < 4) { // if not setting seconds back
       timeNow++;  // the clock ticks...
       if (timeNow>43200)
@@ -1517,12 +1528,12 @@ void loop()
 // xxFaden = 0 to 63
 // xxBright = 1 to 63 ???
 // dn = 0 to 63*63*8/128 = 0 to 248
-  D0 = HourBright*HrFade1*tempbright >> 7;  // hbrt * fade * brt / 128
-  D1 = HourBright*HrFade2*tempbright >> 7;
-  D2 = MinBright*MinFade1*tempbright >> 7;
-  D3 = MinBright*MinFade2*tempbright >> 7;
-  D4 = SecBright*SecFade1*tempbright >> 7;
-  D5 = SecBright*SecFade2*tempbright >> 7;
+  D0 = HourBright*HrFade1*tempbright >> 7 + 1;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*tempbright >> 7 + 1;
+  D2 = MinBright*MinFade1*tempbright >> 7 + 1;
+  D3 = MinBright*MinFade2*tempbright >> 7 + 1;
+  D4 = SecBright*SecFade1*tempbright >> 7 + 1;
+  D5 = SecBright*SecFade2*tempbright >> 7 + 1;
 
 //  DisplayOn = true;  // enable the Display MPX
   
