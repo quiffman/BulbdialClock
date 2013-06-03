@@ -8,8 +8,9 @@ Updates 2013 William B Phelps:
  - lower low brightness
  - fade hour hand change
  - logarithmic fade option
-Todo:
  - stop time update for negative second adjustment
+Todo:
+ - interrupt driven display
  - time setting button repeat
  - auto dim/bright
  - GPS instead of Chronodot
@@ -101,9 +102,8 @@ Todo:
 
 #define AllLEDsOff();  LED_B_Off(); LED_C_Off(); LED_D_Off();
 
-#define tempfade 63
+#define fadeMax 63
 #define fadeGamma 1.3
-#define fadeMax 63.0
 
 // logarithmic conversion table for LED fading - gamma 1.3, max 63 - 30 May 2013 W B Phelps
 byte FadeConv[] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6,
@@ -113,7 +113,7 @@ byte FadeConv[] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3
  32, 32, 32, 33, 33, 33, 34, 34, 35, 35, 35, 36, 36, 36, 37, 37, 37, 38, 38, 39, 39, 39, 40, 40, 40, 
  41, 41, 41, 42, 42, 43, 43, 43, 44, 44, 44, 45, 45, 46, 46, 46, 47, 47, 48, 48, 48, 49, 49, 49, 
  50, 50, 51, 51, 51, 52, 52, 53, 53, 53, 54, 54, 55, 55, 55, 56, 56, 57, 57, 57, 58, 58, 59, 59, 59, 
- 60, 60, 61, 61, 61, 62, 62, 63, 63};
+ 60, 60, 61, 61, 61, 62, 62, 63, 63, 63, 63};  // a couple extras at the end just in case...
 
 void TakeHigh(byte LEDline)
 {
@@ -213,7 +213,7 @@ void TakeLow(byte LEDline)
 }
 
 
-void delayTime(byte time)
+void delayTime(byte time)  // delay (time * 0.045) ms
 {
   unsigned int delayvar;
   delayvar = 0;
@@ -277,9 +277,9 @@ const byte MinLo[30] = {
   7,1,8,1,9,1,7,2,8,2,9,2,7,3,8,3,9,3,7,4,8,4,9,4,7,5,8,5,9,5};
 
 const byte HrHi[12]  = {
-  10, 1, 2,10,10, 6, 3, 10,10, 4, 5,10};
+  10, 1, 2,10,10, 6, 3,10,10, 4, 5,10};
 const byte HrLo[12]  = {
-  1,10,10, 2, 6,10,10, 3, 4,10,10, 5};
+   1,10,10, 2, 6,10,10, 3, 4,10,10, 5};
 
 //int8_t SecNow;
 //int8_t MinNow;
@@ -300,6 +300,7 @@ unsigned long millisThen;
 unsigned long millisNow;
 byte TimeSinceButton;
 byte LastSavedBrightness;
+byte DisplayOn = true;
 
 byte PINDLast;
 
@@ -331,13 +332,13 @@ byte MomentaryOverrideMinus;
 byte MomentaryOverrideZ;
 
 unsigned long  prevtime;
-unsigned long MillisNow;
 
 byte SecNext,  MinNext, HrNext;
-byte h0, h1, h2, h3, h4, h5;
-byte l0, l1, l2, l3, l4, l5;
-byte d0, d1, d2, d3, d4, d5;
 byte HrFade1, HrFade2, MinFade1, MinFade2, SecFade1, SecFade2;
+byte LH1, LH2, LM1, LM2, LS1, LS2;
+volatile byte H0, H1, H2, H3, H4, H5;
+volatile byte L0, L1, L2, L3, L4, L5;
+volatile byte D0, D1, D2, D3, D4, D5;
 
 void ApplyDefaults (void) {
   /*
@@ -435,8 +436,7 @@ void EESaveSettings (void){
   LastSavedBrightness = MainBright;
 
   // Optional: Blink LEDs off to indicate when we're writing to the EEPROM
-  // AllLEDsOff();
-  // delay(100);
+  Blink(200);  // Blink LEDs off to indicate saving data
 
 }
 
@@ -488,7 +488,7 @@ void NormalFades(void) {
 byte SecNow, MinNow, HrNow;
 unsigned long msNow;
 
-  msNow = millisNow - millisThen;
+  msNow = millisNow - millisThen;  // how far into this second are we, in ms?
   HrNow = timeNow/3600;  // hours
   MinNow = timeNow/60%60;  // minutes
   SecNow = timeNow%60;  // seconds
@@ -496,24 +496,25 @@ unsigned long msNow;
   switch (FadeMode)
   {
   case 0:  // no fading
-    HrFade1 = tempfade;
-    MinFade1 = tempfade;
-    SecFade1 = tempfade;
+    HrFade2 = 0;
+    MinFade2 = 0;
+    SecFade2 = 0;
     break;
   case 1:  // original fading
   case 2:  // move hour hand at 31 minutes
+    HrFade2 = 0;
+    MinFade2 = 0;
+    SecFade2 = 0;
     // Normal time display
     if (SecNow & 1)  // ODD second
     {
-      SecFade2 = (63*msNow/1000);
-      SecFade1 = 63 - SecFade2;
+      SecFade2 = (msNow*63/1000);
     }
 
     if (MinNow & 1)  // ODD minute
     {
       if ((SecNow == 59) || SettingTime) {
         MinFade2 = SecFade2;
-        MinFade1 = SecFade1;
       }
     }
 
@@ -521,7 +522,6 @@ unsigned long msNow;
     {
       if (SecNow == 59){
         HrFade2 = SecFade2;
-        HrFade1 = SecFade1;
       }
     }
     break;
@@ -529,27 +529,24 @@ unsigned long msNow;
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
     SecFade2 = msNow*63/2000;
-    SecFade1 = 63 - SecFade2;
     if (MinNow & 1)  // Odd minute
         SecNow += 60;
     MinFade2 = SecNow*63/120;  // fade minute hand slowly
-    MinFade1 = 63 - MinFade2;
     HrFade2 = MinNow*63/60;  // fade hour hand slowly
-    HrFade1 = 63 - HrFade2;      break;
     break;
   case 4:  // continuous logarithmic fading
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
     SecFade2 = FadeConv[msNow/10];  // 0 to 63
-    SecFade1 = 63 - SecFade2;      
     if (MinNow & 1)  // Odd minute
       SecNow += 60;
     MinFade2 = FadeConv[SecNow*5/3];  // fade minute hand slowly
-    MinFade1 = 63 - MinFade2;
     HrFade2 = FadeConv[MinNow*10/3];  // fade hour hand slowly
-    HrFade1 = 63 - HrFade2;      break;
     break;
   }
+  SecFade1 = 63 - SecFade2;      
+  MinFade1 = 63 - MinFade2;
+  HrFade1 = 63 - HrFade2; 
 }
 
 void AlignDisplay(void)
@@ -728,7 +725,7 @@ byte RTCgetTime()
 
 //    if ((minutes) && (MinNow) ) {
     if (minutes) {  // don't adjust if top of the hour
-      if (abs(timeRTC - timeNow) > 2)
+      if (abs(timeRTC - timeNow) > 2)  // only adjust if more than 2 seconds off
         updatetime = 1;
     }
 
@@ -748,7 +745,7 @@ byte RTCgetTime()
 
 void setup()  // run once, when the sketch starts
 {
-  Serial.begin(19200);
+  Serial.begin(9600);
   setTime(0);
 
   PORTB = 0;
@@ -827,11 +824,135 @@ void setup()  // run once, when the sketch starts
 
 // Uncomment to compute logarithmic brightness values for fade
 //  for(int i=0; i <= 200; i++) {
-//    FadeConv[i] = pow(i/200.0,fadeGamma)*fadeMax;
+//    FadeConv[i] = pow(i/200.0,fadeGamma)*63.0;
 //  }
+
+  // we'll use Timer1 to create an interrupt
+//  TCCR1B = (1<<WGM13) | (1<<WGM12);  // fast PWM
+//  TCCR1A = (1<<WGM11) | (1<<WGM10);  // set for OCR1A=TOP
+  TCCR1B = (1<<WGM12);  // CTC mode with OCR1A as TOP
+  TCCR1A = 0;
+  OCR1A = 399;  // 16000000/400 = 40,000 hz
+//  OCR1A = 49;  // 2000000/50 = 40,000 hz
+  TCNT1 = 0;
+  TCCR1B |= (1<<CS10); // connect at 1x to start counter
+//  TCCR1B |= (1<<CS11); // connect at clk/8 to start counter
+  TIMSK1 |= (1<<OCIE1A); // enable Timer1 COMPA interrupt:
 
 }  // End Setup
 
+//volatile uint8_t mpx_counter = 0;
+//volatile uint8_t mpx_limit = 10;  // call Display once every 10 ms
+// Timer1 interrupt runs once every 0.01 ms  (100,000 hz)
+SIGNAL(TIMER1_COMPA_vect) 
+{
+  TCNT1 = 0;
+//  mpx_counter ++;
+//  if (mpx_counter > mpx_limit) {
+//    mpx_counter = 0;
+  if (DisplayOn)
+    DisplayMPX();
+//  }
+}
+
+#define display_max 511
+#define select_max 6
+volatile unsigned long display_cnt = display_max;
+volatile byte display_select;
+void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
+{
+  display_cnt ++;
+  if (display_cnt >= display_max)
+    NextLED();
+  switch(display_select)
+  {
+    case 0:
+      if (D0 <= display_cnt)
+        NextLED();
+      break;
+    case 1:
+      if (D1 <= display_cnt)
+        NextLED();
+      break;
+    case 2:
+      if (D2 <= display_cnt)
+        NextLED();
+      break;
+    case 3:
+      if (D3 <= display_cnt)
+        NextLED();
+      break;
+    case 4:
+      if (D4 <= display_cnt)
+        NextLED();
+      break;
+    case 5:
+      if (D5 <= display_cnt)
+        NextLED();
+      break;
+    case 6:
+      if (((8-MainBright)*50) <= display_cnt)
+        NextLED();
+      break;
+  }
+}
+
+void NextLED(void)
+{
+  AllLEDsOff();
+  display_cnt = 0;
+  display_select ++;  // next LED
+  if (display_select > select_max)
+    display_select = 0;  // wrap back to first LED
+  if (DisplayOn) 
+    switch(display_select)
+    {
+      case 0:
+        if (D0) {
+          TakeHigh(H0);
+          TakeLow(L0);
+        }
+        break;
+      case 1:
+        if (D1) {
+          TakeHigh(H1);
+          TakeLow(L1);
+        }
+        break;
+      case 2:
+        if (D2) {
+          TakeHigh(H2);
+          TakeLow(L2);
+        }
+        break;
+      case 3:
+        if (D3) {
+          TakeHigh(H3);
+          TakeLow(L3);
+        }
+        break;
+      case 4:
+        if (D4) {
+          TakeHigh(H4);
+          TakeLow(L4);
+        }
+        break;
+      case 5:
+        if (D5) {
+          TakeHigh(H5);
+          TakeLow(L5);
+        }
+        break;
+    }
+}
+
+void Blink(long time)  // blink the display to show something happened
+{
+  DisplayOn = false;
+  AllLEDsOff();
+  delay(time);
+  DisplayOn = true;
+}
 
 void IncrAlignVal (void)
 {
@@ -873,6 +994,7 @@ void loop()
   byte RefreshTime;
 
   RefreshTime = AlignMode + SettingTime + OptionMode;
+  millisNow = millis();  // what time is it, in ms?
 
   PINDcopy = PIND & buttonmask;
 
@@ -953,7 +1075,7 @@ void loop()
             // Brightness control mode
             MainBright++;
             if (MainBright > 8)
-              MainBright = 1;  
+              MainBright = 8;  
           }
         }
       }
@@ -1032,7 +1154,7 @@ void loop()
             if (MainBright > 1) 
               MainBright--;
             else
-              MainBright = 8;
+              MainBright = 1;
           }
         }
       }
@@ -1085,8 +1207,8 @@ void loop()
   }
 
   PINDLast = PINDcopy;
-  millisNow = millis();
 
+//  millisNow = millis();
   // Since millisNow & millisThen are both unsigned long, this will work correctly even when millis() wraps
   if ((millisNow - millisThen) >= 1000)  // has 1 second gone by?
   {
@@ -1152,8 +1274,6 @@ void loop()
       if ( FactoryResetDisable == 0){
         ApplyDefaults();
         EESaveSettings();
-        AllLEDsOff();  // Blink LEDs off to indicate saving data
-        delay(200); // blink longer (wbp)
       }
       else
       {
@@ -1178,8 +1298,6 @@ void loop()
       if (OptionMode) {
         OptionMode = 0;
         EESaveSettings();  // Save options if exiting option mode!
-        AllLEDsOff();      // Blink LEDs off to indicate saving data
-        delay(200);  // blink longer (wbp)
       }
       else {
         OptionMode = 1;
@@ -1197,15 +1315,11 @@ void loop()
         if (SettingTime && ExtRTC) {
 //          RTCsetTime(HrNow,MinNow,SecNow);
           RTCsetTime(timeNow);
-          AllLEDsOff();  // Blink LEDs off to indicate saving time
-          delay(100);
-///          UpdateRTC = 1;  // sync time with RTC now
+          Blink(200);  // Blink LEDs off to indicate RTC time set
         }
 
         if (OptionMode) {
           EESaveSettings();  // Save options if exiting option mode!
-          AllLEDsOff();    // Blink LEDs off to indicate saving data
-          delay(200);  // blink longer (wbp)
         }
 
         SettingTime = 0;
@@ -1226,9 +1340,13 @@ void loop()
        timeNow -= 43200;
       RefreshTime = 1;
     }
+    
+    if (((timeNow%60) == 0) && (SettingTime == 0) && ExtRTC)  // Check RTC once per minute if not setting time & RTC enabled
+      RTCgetTime();
 
   }
   
+
   if (RefreshTime) {
     // Calculate which LEDs to light up to give the correct shadows:
 
@@ -1242,85 +1360,69 @@ void loop()
       NormalTimeDisplay();
     }
 
-    h3 = HrDisp;
-    l3 = HrNext;
-    h4 = MinDisp;
-    l4 = MinNext;
-    h5 = SecDisp;
-    l5 = SecNext;
-
     if (CCW){
       // Counterclockwise
       if (HrDisp)
-        h3 = 12 - HrDisp;
+        LH1 = 12 - HrDisp;
       if (HrNext)
-        l3 = 12 - HrNext;
+        LH2 = 12 - HrNext;
       if (MinDisp)
-        h4 = 30 - MinDisp;
+        LM1 = 30 - MinDisp;
       if (MinNext)
-        l4 = 30 - MinNext;
+        LM2 = 30 - MinNext;
       if (SecDisp)
-        h5 = 30 - SecDisp;
+        LS1 = 30 - SecDisp;
       if (SecNext)
-        l5 = 30 - SecNext;
+        LS2 = 30 - SecNext;
 
       // Serial.print(HrDisp,DEC);
       // Serial.print(", ");
-      // Serial.println(h3,DEC);
-
+      // Serial.println(H3,DEC);
+    }  // if (CCW)
+    else
+    {
+      LH1 = HrDisp;
+      LH2 = HrNext;
+      LM1 = MinDisp;
+      LM2 = MinNext;
+      LS1 = SecDisp;
+      LS2 = SecNext;
     }
-
-    h0 = HrHi[h3];
-    l0 = HrLo[h3];
-
-    h1 = HrHi[l3];
-    l1 = HrLo[l3];
-
-    h2 = MinHi[h4];
-    l2  = MinLo[h4];
-
-    h3 = MinHi[l4];
-    l3  = MinLo[l4];
-
-    h4 = SecHi[h5];
-    l4  = SecLo[h5];
-
-    h5 = SecHi[l5];
-    l5 = SecLo[l5];
 
   }
 
-  SecFade2 = 0;  // 2nd LED dim
-  SecFade1 = 63;  // 1st LED bright
-
-  MinFade2 = 0;
-  MinFade1 = 63;
-
-  HrFade2 = 0;
-  HrFade1 = 63;
+//  SecFade1 = 63;  // 1st LED bright
+//  SecFade2 = 0;  // 2nd LED dim
+//  MinFade1 = 63;
+//  MinFade2 = 0;
+//  HrFade1 = 63;
+//  HrFade2 = 0;
 
   if (SettingTime)  // i.e., if (SettingTime is nonzero)
   {
 
+    HrFade2 = 0;
+    MinFade2 = 0;
+    SecFade2 = 0;
     HrFade1 = 5;  // make them all dim
     MinFade1 = 5;
     SecFade1 = 5;
 
     if (SettingTime == 1)  // hours
     {
-      HrFade1  = tempfade;  // make hours bright
+      HrFade1  = fadeMax;  // make hours bright
     }
     if (SettingTime == 2)  // minutes
     {
-      MinFade1  = tempfade;  // make minutes bright
+      MinFade1  = fadeMax;  // make minutes bright
       if (timeNow/60 & 1)  // odd minutes 
-        MinFade2 = tempfade;  // 2nd LED on as well (wbp)
+        MinFade2 = fadeMax;  // 2nd LED on as well (wbp)
     }
     if (SettingTime > 2)  // seconds
     {
-      SecFade1 = tempfade;  // make seconds bright
+      SecFade1 = fadeMax;  // make seconds bright
       if (timeNow & 1)  // odd seconds
-        SecFade2 = tempfade;  // 2nd LED on as well (wbp)
+        SecFade2 = fadeMax;  // 2nd LED on as well (wbp)
     }
 
   }
@@ -1329,41 +1431,44 @@ void loop()
     HrFade1 = 0;
     MinFade1 = 0;
     SecFade1 = 0;
+    HrFade2 = 0;
+    MinFade2 = 0;
+    SecFade2 = 0;
 
     if (AlignMode){
       if (AlignMode < 3)
-        SecFade1 = tempfade;
+        SecFade1 = fadeMax;
       else if (AlignMode > 4)
-        HrFade1 = tempfade;
+        HrFade1 = fadeMax;
       else
-        MinFade1 = tempfade;
+        MinFade1 = fadeMax;
     }
     else {  // Must be OptionMode....
       if (StartingOption < StartOptTimeLimit)
       {
         if (OptionMode == 1)
         {
-          HrFade1 = tempfade;
+          HrFade1 = fadeMax;
         }
         if (OptionMode == 2)
         {
-          MinFade1 = tempfade;
+          MinFade1 = fadeMax;
         }
         if (OptionMode == 3)
         {
-          SecFade1 = tempfade;
+          SecFade1 = fadeMax;
         }
         if (OptionMode == 4)  // CW vs CCW
         {
-          SecFade1 = tempfade;
-          MinFade1 = tempfade;
+          SecFade1 = fadeMax;
+          MinFade1 = fadeMax;
         }
       }
       else {  // No longer in starting mode.
 
-        HrFade1 = tempfade;
-        MinFade1 = tempfade;
-        SecFade1 = tempfade;
+        HrFade1 = fadeMax;
+        MinFade1 = fadeMax;
+        SecFade1 = fadeMax;
 
         if (OptionMode == 4)  // CW vs CCW
         {
@@ -1390,71 +1495,37 @@ void loop()
       tempbright = 0;
   }
 
-  d0 = HourBright*HrFade1*tempbright >> 7;  // hbrt * fade * brt / 128
-  d1 = HourBright*HrFade2*tempbright >> 7;
-  d2 = MinBright*MinFade1*tempbright >> 7;
-  d3 = MinBright*MinFade2*tempbright >> 7;
-  d4 = SecBright*SecFade1*tempbright >> 7;
-  d5 = SecBright*SecFade2*tempbright >> 7;
-
-  // unsigned long  temp = millis();
-
-  // This is the loop where we actually light up the LEDs:
-  byte i = 0;
-  while (i < 128)  // 128 cycles: ROUGHLY 39 ms  => Full redraw at about 3 kHz.
-  {
-
-    if (d0 > 0){
-      TakeHigh(h0);
-      TakeLow(l0);
-      delayTime(d0);
-      AllLEDsOff();
-    }
-
-    if (d1 > 0){
-      TakeHigh(h1);
-      TakeLow(l1);
-      delayTime(d1);
-      AllLEDsOff();
-    }
-
-    if (d2 > 0){
-      TakeHigh(h2);
-      TakeLow(l2);
-      delayTime(d2);
-      AllLEDsOff();
-    }
-
-    if (d3 > 0){
-      TakeHigh(h3);
-      TakeLow(l3);
-      delayTime(d3);
-      AllLEDsOff();
-    }
-
-    if (d4 > 0){
-      TakeHigh(h4);
-      TakeLow(l4);
-      delayTime(d4);
-      AllLEDsOff();
-    }
-
-    if (d5 > 0){
-      TakeHigh(h5);
-      TakeLow(l5);
-      delayTime(d5);
-      AllLEDsOff();
-    }
-
-    if (MainBright < 8){  // delay (8-brt)*32 (times 3)
-      delayTime(((8-MainBright)<<5)+MainBrightOffset);
-      delayTime(((8-MainBright)<<5)+MainBrightOffset);
-      delayTime(((8-MainBright)<<5)+MainBrightOffset);
-    }
-
-    i++;
+//  DisplayOn = false;  // suspend Display MPX while setting new values...
+  
+  if (RefreshTime) {
+    L0 = HrLo[LH1];
+    H0 = HrHi[LH1];
+    L1 = HrLo[LH2];
+    H1 = HrHi[LH2];
+    L2 = MinLo[LM1];
+    H2 = MinHi[LM1];
+    L3 = MinLo[LM2];
+    H3 = MinHi[LM2];
+    L4 = SecLo[LS1];
+    H4 = SecHi[LS1];
+    L5 = SecLo[LS2];
+    H5 = SecHi[LS2];
   }
 
+// set brightness for each of 6 LED's
+// tempbright = 0 to 8
+// xxFaden = 0 to 63
+// xxBright = 1 to 63 ???
+// dn = 0 to 63*63*8/128 = 0 to 248
+  D0 = HourBright*HrFade1*tempbright >> 7;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*tempbright >> 7;
+  D2 = MinBright*MinFade1*tempbright >> 7;
+  D3 = MinBright*MinFade2*tempbright >> 7;
+  D4 = SecBright*SecFade1*tempbright >> 7;
+  D5 = SecBright*SecFade2*tempbright >> 7;
+
+//  DisplayOn = true;  // enable the Display MPX
+  
   /*
   temp = millis() - temp;
   Serial.println(temp,DEC);
@@ -1464,13 +1535,8 @@ void loop()
   if( getPCtime()) {  // try to get time sync from pc
 
     // Set time to that given from PC.
-//    MinNow = minute();
-//    SecNow = second();
-//    HrNow = hour();
     timeNow = hour()*3600 + minute()*60 + second();
 
-//    if ( HrNow > 11)  // Convert 24-hour mode to 12-hour mode
-//      HrNow -= 12;
     if (timeNow > 43200)
       timeNow -= 43200;  // 12 hour time in seconds
 
@@ -1491,4 +1557,9 @@ void loop()
       }
     }
   }
-}
+
+  while ((millis() - millisNow) < 10)  // run the main loop at 100 hz 
+    asm("nop");
+
+}  // END Loop
+
