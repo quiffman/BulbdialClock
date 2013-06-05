@@ -1493,18 +1493,12 @@ void loop()
     NormalFades();
   }
 
-  byte tempbright = MainBright;
-
-  if (SleepMode)
-    tempbright = 0;
-
-  if (VCRmode){
-    if (timeNow & 1)
-      tempbright = 0;
+  if (SleepMode || (VCRmode && (timeNow & 1))) {
+    DisplayOn = false;
   }
+  else
+    DisplayOn = true;
 
-//  DisplayOn = false;  // suspend Display MPX while setting new values...
-  
   cli();
   if (RefreshTime) {
 //    cli();
@@ -1524,21 +1518,20 @@ void loop()
   }
 
 // set brightness for each of 6 LED's
-// tempbright = 0 to 8
+// MainBright = 0 to 8
 // xxFaden = 0 to 63
 // xxBright = 1 to 63 ???
 // dn = 0 to 63*63*8/128 = 0 to 248
 //  cli();
-  D0 = HourBright*HrFade1*tempbright >> 7 + 1;  // hbrt * fade * brt / 128
-  D1 = HourBright*HrFade2*tempbright >> 7 + 1;  // the "+1" eliminates small glitches at top of second
-  D2 = MinBright*MinFade1*tempbright >> 7 + 1;
-  D3 = MinBright*MinFade2*tempbright >> 7 + 1;
-  D4 = SecBright*SecFade1*tempbright >> 7 + 1;
-  D5 = SecBright*SecFade2*tempbright >> 7 + 1;
+  D0 = HourBright*HrFade1*MainBright >> 7 + 1;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*MainBright >> 7 + 1;  // the "+1" eliminates small glitches at top of second
+  D2 = MinBright*MinFade1*MainBright >> 7 + 1;
+  D3 = MinBright*MinFade2*MainBright >> 7 + 1;
+  D4 = SecBright*SecFade1*MainBright >> 7 + 1;
+  D5 = SecBright*SecFade2*MainBright >> 7 + 1;
   sei();
 
-//  DisplayOn = true;  // enable the Display MPX
-  
+
   /*
   temp = millis() - temp;
   Serial.println(temp,DEC);
