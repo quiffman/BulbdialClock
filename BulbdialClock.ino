@@ -9,11 +9,11 @@ Updates 2013 William B Phelps:
  - fade hour hand change
  - logarithmic fade option
  - stop time update for negative second adjustment
-Todo:
  - interrupt driven display
- - time setting button repeat
+Todo:
  - auto dim/bright
  - GPS instead of Chronodot
+ - time setting button repeat
  
  Software for the Bulbdial Clock kit designed by
  Evil Mad Scientist Laboratories: http://www.evilmadscientist.com/go/bulbdialkit
@@ -861,8 +861,9 @@ SIGNAL(TIMER1_COMPA_vect)
 
 #define count_max 511
 #define select_max 6
-volatile unsigned long mpx_count = 0;
-volatile byte mpx_select = 0;
+//unsigned int mpx_count = 0;
+unsigned int mpx_count = 0;
+byte mpx_select = 0;
 void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
 {
 //  sei();  // enable interrupts
@@ -896,7 +897,7 @@ void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
         NextLED();
       break;
     case 6:
-      if (mpx_count > ((8-MainBright)*32))
+      if (mpx_count > ((8-MainBright)*96))
         NextLED();
       break;
   }
@@ -1532,13 +1533,12 @@ void loop()
 // xxBright = 1 to 63 ???
 // dn = 0 to 63*63*8/128 = 0 to 248
 //  cli();
-byte of = 1;
-  D0 = HourBright*HrFade1*tempbright >> 7 + of;  // hbrt * fade * brt / 128
-  D1 = HourBright*HrFade2*tempbright >> 7 + of;
-  D2 = MinBright*MinFade1*tempbright >> 7 + of;
-  D3 = MinBright*MinFade2*tempbright >> 7 + of;
-  D4 = SecBright*SecFade1*tempbright >> 7 + of;
-  D5 = SecBright*SecFade2*tempbright >> 7 + of;
+  D0 = HourBright*HrFade1*tempbright >> 7;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*tempbright >> 7;
+  D2 = MinBright*MinFade1*tempbright >> 7;
+  D3 = MinBright*MinFade2*tempbright >> 7;
+  D4 = SecBright*SecFade1*tempbright >> 7;
+  D5 = SecBright*SecFade2*tempbright >> 7;
   sei();
 
 //  DisplayOn = true;  // enable the Display MPX
