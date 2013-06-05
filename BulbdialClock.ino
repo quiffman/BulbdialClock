@@ -845,8 +845,8 @@ void setup()  // run once, when the sketch starts
 }  // End Setup
 
 // Arduino Timer0 prescaler = 64; 16000000/64 = 250,000 hz
-volatile uint8_t mpx_counter = 0;
-volatile uint8_t mpx_limit = 10;  // call Display at 50,000 hz
+//volatile uint8_t mpx_counter = 0;
+//volatile uint8_t mpx_limit = 10;  // call Display at 50,000 hz
 // Timer1 interrupt runs once every 0.025 ms  (40,000 hz)
 SIGNAL(TIMER1_COMPA_vect) 
 {
@@ -859,10 +859,10 @@ SIGNAL(TIMER1_COMPA_vect)
 //  }
 }
 
-#define count_max 511
-#define select_max 6
+#define count_max 254
+#define select_max 8
 //unsigned int mpx_count = 0;
-unsigned int mpx_count = 0;
+byte mpx_count = 0;
 byte mpx_select = 0;
 void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
 {
@@ -897,7 +897,15 @@ void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
         NextLED();
       break;
     case 6:
-      if (mpx_count > ((8-MainBright)*96))
+      if (mpx_count > ((8-MainBright)*20))
+        NextLED();
+      break;
+    case 7:
+      if (mpx_count > ((8-MainBright)*20))
+        NextLED();
+      break;
+    case 8:
+      if (mpx_count > ((8-MainBright)*20))
         NextLED();
       break;
   }
@@ -913,40 +921,28 @@ void NextLED(void)
   switch(mpx_select)  // now turn the LED on
   {
     case 0:
-//      if (D0) {
         TakeHigh(H0);
         TakeLow(L0);
-//      }
       break;
     case 1:
-//      if (D1) {
         TakeHigh(H1);
         TakeLow(L1);
-//      }
       break;
     case 2:
-//      if (D2) {
         TakeHigh(H2);
         TakeLow(L2);
-//      }
       break;
     case 3:
-//      if (D3) {
         TakeHigh(H3);
         TakeLow(L3);
-//      }
       break;
     case 4:
-//      if (D4) {
         TakeHigh(H4);
         TakeLow(L4);
-//      }
       break;
     case 5:
-//      if (D5) {
         TakeHigh(H5);
         TakeLow(L5);
-//      }
       break;
   }
 }
@@ -1533,12 +1529,12 @@ void loop()
 // xxBright = 1 to 63 ???
 // dn = 0 to 63*63*8/128 = 0 to 248
 //  cli();
-  D0 = HourBright*HrFade1*tempbright >> 7;  // hbrt * fade * brt / 128
-  D1 = HourBright*HrFade2*tempbright >> 7;
-  D2 = MinBright*MinFade1*tempbright >> 7;
-  D3 = MinBright*MinFade2*tempbright >> 7;
-  D4 = SecBright*SecFade1*tempbright >> 7;
-  D5 = SecBright*SecFade2*tempbright >> 7;
+  D0 = HourBright*HrFade1*tempbright >> 7 + 1;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*tempbright >> 7 + 1;  // the "+1" eliminates small glitches at top of second
+  D2 = MinBright*MinFade1*tempbright >> 7 + 1;
+  D3 = MinBright*MinFade2*tempbright >> 7 + 1;
+  D4 = SecBright*SecFade1*tempbright >> 7 + 1;
+  D5 = SecBright*SecFade2*tempbright >> 7 + 1;
   sei();
 
 //  DisplayOn = true;  // enable the Display MPX
