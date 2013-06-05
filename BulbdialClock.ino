@@ -1180,11 +1180,11 @@ void CheckButtons(void)
 
           OptionMode++;
           StartingOption = 0;
+          if (OptionMode > 5)
+            OptionMode = 1;
           if (OptionMode > 3)  // CW vs CCW OR fade mode
             StartingOption = StartOptTimeLimit;  // don't go into loop
 
-          if (OptionMode > 5)
-            OptionMode = 1;
         }
         else if (SettingTime) {
           SettingTime++;
