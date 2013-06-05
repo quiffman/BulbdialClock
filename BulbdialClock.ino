@@ -15,7 +15,7 @@ Todo:
  - auto dim/bright
  - GPS instead of Chronodot
  
- Default software for the Bulbdial Clock kit designed by
+ Software for the Bulbdial Clock kit designed by
  Evil Mad Scientist Laboratories: http://www.evilmadscientist.com/go/bulbdialkit
  
  Updated to work with Arduino 1.0 by Ray Ramirez
@@ -103,18 +103,18 @@ Todo:
 #define AllLEDsOff();  LED_B_Off(); LED_C_Off(); LED_D_Off();
 
 #define fadeMax 63
-#define fadeGamma 1.3
+#define fadeGamma 1.8
+#define deltaGamma 0.6
 
-// logarithmic conversion table for LED fading - gamma 1.3, max 63 - 30 May 2013 W B Phelps
-byte FadeConv[] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6,
- 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14,
- 15, 15, 15, 15, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 19, 19, 20, 20, 20, 21, 21, 21, 22, 22, 22, 23, 
- 23, 23, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 27, 27, 28, 28, 28, 29, 29, 29, 30, 30, 30, 31, 31, 31, 
- 32, 32, 32, 33, 33, 33, 34, 34, 35, 35, 35, 36, 36, 36, 37, 37, 37, 38, 38, 39, 39, 39, 40, 40, 40, 
- 41, 41, 41, 42, 42, 43, 43, 43, 44, 44, 44, 45, 45, 46, 46, 46, 47, 47, 48, 48, 48, 49, 49, 49, 
- 50, 50, 51, 51, 51, 52, 52, 53, 53, 53, 54, 54, 55, 55, 55, 56, 56, 57, 57, 57, 58, 58, 59, 59, 59, 
- 60, 60, 61, 61, 61, 62, 62, 63, 63, 63, 63};  // a couple extras at the end just in case...
-
+// s-shaped log curve (Phelps/Johnson) - gamma 1.8, delta 0.6 - 04 June 2013 William B Phelps
+byte FadeConv[] = {0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10,
+ 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 19, 20, 20, 20,
+ 20, 21, 21, 21, 22, 22, 22, 23, 23, 23, 24, 24, 24, 25, 25, 25, 26, 26, 26, 26, 27, 27, 27, 28, 28, 28, 29, 29, 29, 30, 30,
+ 30, 31, 31, 31, 32, 32, 32, 32, 33, 33, 33, 34, 34, 34, 35, 35, 35, 36, 36, 36, 37, 37, 37, 37, 38, 38, 38, 39, 39, 39, 40,
+ 40, 40, 41, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 44, 45, 45, 45, 46, 46, 46, 47, 47, 47, 48, 48, 48, 49, 49, 49, 49,
+ 50, 50, 50, 51, 51, 51, 52, 52, 52, 53, 53, 53, 54, 54, 54, 54, 55, 55, 55, 56, 56, 56, 57, 57, 57, 58, 58, 58, 59, 59, 59,
+ 60, 60, 60, 60, 61, 61, 61, 62, 62, 62, 63, 63};
+ 
 void TakeHigh(byte LEDline)
 {
   switch( LEDline )
@@ -285,7 +285,8 @@ const byte HrLo[12]  = {
 //int8_t MinNow;
 //int8_t HrNow;
 long timeNow;
-byte HrDisp,MinDisp, SecDisp;
+byte HrDisp, MinDisp, SecDisp;
+byte SecNext, MinNext, HrNext;
 
 #define EELength 7
 byte EEvalues[EELength];
@@ -333,7 +334,6 @@ byte MomentaryOverrideZ;
 
 unsigned long  prevtime;
 
-byte SecNext,  MinNext, HrNext;
 byte HrFade1, HrFade2, MinFade1, MinFade2, SecFade1, SecFade2;
 byte LH1, LH2, LM1, LM2, LS1, LS2;
 volatile byte H0, H1, H2, H3, H4, H5;
@@ -443,29 +443,31 @@ void EESaveSettings (void){
 
 void NormalTimeDisplay(void) {
 byte SecNow, MinNow, HrNow;
+unsigned int t;
 
-  HrNow = timeNow/3600;  // hours
-  MinNow = timeNow/60%60;  // minutes
-  SecNow = timeNow%60;  // seconds
+  t = timeNow;
+  HrNow = t/3600;
+  t = t - HrNow*3600;  // seconds in this hour
+  MinNow = t/60;
+  SecNow = t - MinNow*60;
 
-  SecDisp = (SecNow + 30);  // Offset by 30 s to project *shadow* in the right place.
-  if ( SecDisp > 59)
-    SecDisp -= 60;
-  SecDisp >>= 1;  // Divide by two, since there are 30 LEDs, not 60.
+  SecDisp = (SecNow/2 + 15);  // Offset by 30 s to project *shadow* in the right place.
+  if ( SecDisp > 29)
+    SecDisp -= 30;
+//  SecDisp >>= 1;  // Divide by two, since there are 30 LEDs, not 60.
 
   SecNext = SecDisp + 1;
   if (SecNext > 29)
     SecNext = 0;
 
-  MinDisp = (MinNow + 30);  // Offset by 30 m to project *shadow* in the right place.
-  if ( MinDisp > 59)
-    MinDisp -= 60;
-  MinDisp >>= 1;  // Divide by two, since there are 30 LEDs, not 60.
+  MinDisp = (MinNow/2 + 15);  // Offset by 30 m to project *shadow* in the right place.
+  if ( MinDisp > 29)
+    MinDisp -= 30;
+//  MinDisp >>= 1;  // Divide by two, since there are 30 LEDs, not 60.
 
   MinNext = MinDisp + 1;
   if (MinNext > 29)
-//    MinNext = 0;
-    MinNext -= 30;
+    MinNext = 0;
 
   HrDisp = (HrNow + 6);  // Offset by 6 h to project *shadow* in the right place.
   
@@ -487,24 +489,21 @@ byte SecNow, MinNow, HrNow;
 void NormalFades(void) {
 byte SecNow, MinNow, HrNow;
 unsigned long msNow;
+unsigned int t;
 
+  t = timeNow;
+  HrNow = t/3600;
+  t = t - HrNow*3600;  // seconds in this hour
+  MinNow = t/60;
+  SecNow = t - MinNow*60;
   msNow = millisNow - millisThen;  // how far into this second are we, in ms?
-  HrNow = timeNow/3600;  // hours
-  MinNow = timeNow/60%60;  // minutes
-  SecNow = timeNow%60;  // seconds
 
   switch (FadeMode)
   {
   case 0:  // no fading
-    HrFade2 = 0;
-    MinFade2 = 0;
-    SecFade2 = 0;
     break;
   case 1:  // original fading
   case 2:  // move hour hand at 31 minutes
-    HrFade2 = 0;
-    MinFade2 = 0;
-    SecFade2 = 0;
     // Normal time display
     if (SecNow & 1)  // ODD second
     {
@@ -518,7 +517,7 @@ unsigned long msNow;
       }
     }
 
-    if ( ((FadeMode == 1) && (MinNow == 59)) || ((FadeMode == 2) && (MinNow == 30)) )  // end of the hour or second half of the hour (wbp)
+    if ( ((MinNow == 59) && (FadeMode == 1)) || ((MinNow == 30) && (FadeMode == 2)) )  // end of the hour or second half of the hour (wbp)
     {
       if (SecNow == 59){
         HrFade2 = SecFade2;
@@ -641,7 +640,7 @@ void OptionDisplay(void)
         MinDisp = 0;
       SecDisp = MinDisp;
     }
-    else
+    else  // FadeMode adjust
       NormalTimeDisplay();
 
   }
@@ -827,71 +826,77 @@ void setup()  // run once, when the sketch starts
 //    FadeConv[i] = pow(i/200.0,fadeGamma)*63.0;
 //  }
 
-  // we'll use Timer1 to create an interrupt
-//  TCCR1B = (1<<WGM13) | (1<<WGM12);  // fast PWM
-//  TCCR1A = (1<<WGM11) | (1<<WGM10);  // set for OCR1A=TOP
-  TCCR1B = (1<<WGM12);  // CTC mode with OCR1A as TOP
+  cli();  // disable interrupts
+// we'll use Timer1 to create an interrupt
   TCCR1A = 0;
-  OCR1A = 333;  // 16000000/400 = 40,000 hz
-//  OCR1A = 49;  // 2000000/50 = 40,000 hz
-  TCNT1 = 0;
+  TCCR1B = (1<<WGM12);  // CTC mode with OCR1A as TOP
+//  OCR1A = 319;  // 16000000/320 = 50,000 hz
+  OCR1A = 159;  // 16000000/160 = 100,000 hz
+//  OCR1A = 39;  // 16000000/8/40 = 20,000 hz
+//  OCR1A = 24;  // 16000000/8/25 = 80,000 hz
+//  OCR1A = 19;  // 16000000/8/20 = 100,000 hz
   TCCR1B |= (1<<CS10); // connect at 1x to start counter
 //  TCCR1B |= (1<<CS11); // connect at clk/8 to start counter
+  TCNT1 = 0;
   TIMSK1 |= (1<<OCIE1A); // enable Timer1 COMPA interrupt:
+//  TCCR0A &= ~(_BV(WGM01) | _BV(WGM00));  // disable Timer0 PWM interrupts
+  sei();
 
 }  // End Setup
 
-//volatile uint8_t mpx_counter = 0;
-//volatile uint8_t mpx_limit = 10;  // call Display once every 10 ms
-// Timer1 interrupt runs once every 0.01 ms  (100,000 hz)
+// Arduino Timer0 prescaler = 64; 16000000/64 = 250,000 hz
+volatile uint8_t mpx_counter = 0;
+volatile uint8_t mpx_limit = 10;  // call Display at 50,000 hz
+// Timer1 interrupt runs once every 0.025 ms  (40,000 hz)
 SIGNAL(TIMER1_COMPA_vect) 
 {
-  TCNT1 = 0;
+//  TCNT1 = 0;
 //  mpx_counter ++;
 //  if (mpx_counter > mpx_limit) {
 //    mpx_counter = 0;
-  if (DisplayOn)
-    DisplayMPX();
+      if (DisplayOn)
+        DisplayMPX();
 //  }
 }
 
-#define display_max 511
+#define count_max 511
 #define select_max 6
-volatile unsigned long display_cnt = display_max;
-volatile byte display_select;
+volatile unsigned long mpx_count = 0;
+volatile byte mpx_select = 0;
 void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
 {
-  display_cnt ++;
-  if (display_cnt >= display_max)
-    NextLED();
-  switch(display_select)
+//  sei();  // enable interrupts
+  mpx_count ++;
+//  if (mpx_count > count_max)  // this test should not be necessary...
+//    NextLED();
+  switch(mpx_select)
   {
     case 0:
-      if (D0 < display_cnt)
+      if (mpx_count > D0)
         NextLED();
       break;
     case 1:
-      if (D1 < display_cnt)
+      if (mpx_count > D1)
         NextLED();
       break;
     case 2:
-      if (D2 < display_cnt)
+      if (mpx_count > D2)
         NextLED();
       break;
     case 3:
-      if (D3 < display_cnt)
+      if (mpx_count > D3)
         NextLED();
       break;
     case 4:
-      if (D4 < display_cnt)
+      if (mpx_count > D4)
         NextLED();
       break;
     case 5:
-      if (D5 < display_cnt)
+      if (mpx_count > D5)
         NextLED();
       break;
     case 6:
-      if (((8-MainBright)*50) <= display_cnt)
+      if (mpx_count > ((8-MainBright)*32))
         NextLED();
       break;
   }
@@ -900,47 +905,47 @@ void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
 void NextLED(void)
 {
   AllLEDsOff();
-  display_cnt = 0;
-  display_select ++;  // next LED
-  if (display_select > select_max)
-    display_select = 0;  // wrap back to first LED
-  switch(display_select)  // now turn the LED on
+  mpx_count = 0;
+  mpx_select ++;  // next LED
+  if (mpx_select > select_max)
+    mpx_select = 0;  // wrap back to first LED
+  switch(mpx_select)  // now turn the LED on
   {
     case 0:
-      if (D0) {
+//      if (D0) {
         TakeHigh(H0);
         TakeLow(L0);
-      }
+//      }
       break;
     case 1:
-      if (D1) {
+//      if (D1) {
         TakeHigh(H1);
         TakeLow(L1);
-      }
+//      }
       break;
     case 2:
-      if (D2) {
+//      if (D2) {
         TakeHigh(H2);
         TakeLow(L2);
-      }
+//      }
       break;
     case 3:
-      if (D3) {
+//      if (D3) {
         TakeHigh(H3);
         TakeLow(L3);
-      }
+//      }
       break;
     case 4:
-      if (D4) {
+//      if (D4) {
         TakeHigh(H4);
         TakeLow(L4);
-      }
+//      }
       break;
     case 5:
-      if (D5) {
+//      if (D5) {
         TakeHigh(H5);
         TakeLow(L5);
-      }
+//      }
       break;
   }
 }
@@ -1178,6 +1183,8 @@ void CheckButtons(void)
 
           OptionMode++;
           StartingOption = 0;
+          if (OptionMode > 3)  // CW vs CCW OR fade mode
+            StartingOption = StartOptTimeLimit;  // don't go into loop
 
           if (OptionMode > 5)
             OptionMode = 1;
@@ -1333,7 +1340,8 @@ void loop()
   byte RefreshTime;
 
   RefreshTime = AlignMode + SettingTime + OptionMode;
-  millisNow = millis();  // what time is it, in ms?
+  millisNow = millis();
+//  millisNow += 1;  // temp - simulate 1 ms per 10 ms loop
 
   CheckButtons();
 
@@ -1352,8 +1360,8 @@ void loop()
       RefreshTime = 1;
     }
     
-    if (((timeNow%60) == 0) && (SettingTime == 0) && ExtRTC)  // Check RTC once per minute if not setting time & RTC enabled
-      RTCgetTime();
+//    if (((timeNow%60) == 0) && (SettingTime == 0) && ExtRTC)  // Check RTC once per minute, if not setting time & RTC enabled
+//      RTCgetTime();
 
   }
   
@@ -1370,6 +1378,13 @@ void loop()
     else    {  // Regular clock display
       NormalTimeDisplay();
     }
+
+    LH1 = HrDisp;
+    LH2 = HrNext;
+    LM1 = MinDisp;
+    LM2 = MinNext;
+    LS1 = SecDisp;
+    LS2 = SecNext;
 
     if (CCW){
       // Counterclockwise
@@ -1390,31 +1405,19 @@ void loop()
       // Serial.print(", ");
       // Serial.println(H3,DEC);
     }  // if (CCW)
-    else
-    {
-      LH1 = HrDisp;
-      LH2 = HrNext;
-      LM1 = MinDisp;
-      LM2 = MinNext;
-      LS1 = SecDisp;
-      LS2 = SecNext;
-    }
 
   }
 
-//  SecFade1 = 63;  // 1st LED bright
-//  SecFade2 = 0;  // 2nd LED dim
-//  MinFade1 = 63;
-//  MinFade2 = 0;
-//  HrFade1 = 63;
-//  HrFade2 = 0;
+  SecFade1 = 63;  // 1st LED bright
+  SecFade2 = 0;  // 2nd LED dim
+  MinFade1 = 63;
+  MinFade2 = 0;
+  HrFade1 = 63;
+  HrFade2 = 0;
 
   if (SettingTime)  // i.e., if (SettingTime is nonzero)
   {
 
-    HrFade2 = 0;
-    MinFade2 = 0;
-    SecFade2 = 0;
     HrFade1 = 5;  // make them all dim
     MinFade1 = 5;
     SecFade1 = 5;
@@ -1442,9 +1445,6 @@ void loop()
     HrFade1 = 0;
     MinFade1 = 0;
     SecFade1 = 0;
-    HrFade2 = 0;
-    MinFade2 = 0;
-    SecFade2 = 0;
 
     if (AlignMode){
       if (AlignMode < 3)
@@ -1508,7 +1508,9 @@ void loop()
 
 //  DisplayOn = false;  // suspend Display MPX while setting new values...
   
+  cli();
   if (RefreshTime) {
+//    cli();
     L0 = HrLo[LH1];
     H0 = HrHi[LH1];
     L1 = HrLo[LH2];
@@ -1521,6 +1523,7 @@ void loop()
     H4 = SecHi[LS1];
     L5 = SecLo[LS2];
     H5 = SecHi[LS2];
+//    sei();
   }
 
 // set brightness for each of 6 LED's
@@ -1528,12 +1531,15 @@ void loop()
 // xxFaden = 0 to 63
 // xxBright = 1 to 63 ???
 // dn = 0 to 63*63*8/128 = 0 to 248
-  D0 = HourBright*HrFade1*tempbright >> 7 + 1;  // hbrt * fade * brt / 128
-  D1 = HourBright*HrFade2*tempbright >> 7 + 1;
-  D2 = MinBright*MinFade1*tempbright >> 7 + 1;
-  D3 = MinBright*MinFade2*tempbright >> 7 + 1;
-  D4 = SecBright*SecFade1*tempbright >> 7 + 1;
-  D5 = SecBright*SecFade2*tempbright >> 7 + 1;
+//  cli();
+byte of = 1;
+  D0 = HourBright*HrFade1*tempbright >> 7 + of;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*tempbright >> 7 + of;
+  D2 = MinBright*MinFade1*tempbright >> 7 + of;
+  D3 = MinBright*MinFade2*tempbright >> 7 + of;
+  D4 = SecBright*SecFade1*tempbright >> 7 + of;
+  D5 = SecBright*SecFade2*tempbright >> 7 + of;
+  sei();
 
 //  DisplayOn = true;  // enable the Display MPX
   
