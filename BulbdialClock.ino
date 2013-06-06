@@ -72,7 +72,7 @@ Todo:
 
 #define CCWDefault 0
 #define FadeModeDefault 1
-#define FadeModes 4
+#define FadeModes 5
 
 #define AlignModeDefault 0
 
@@ -107,14 +107,25 @@ Todo:
 #define deltaGamma 0.6
 
 // s-shaped log curve (Phelps/Johnson) - gamma 1.8, delta 0.6 - 04 June 2013 William B Phelps
-byte FadeConv[] = {0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10,
- 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 19, 20, 20, 20,
- 20, 21, 21, 21, 22, 22, 22, 23, 23, 23, 24, 24, 24, 25, 25, 25, 26, 26, 26, 26, 27, 27, 27, 28, 28, 28, 29, 29, 29, 30, 30,
- 30, 31, 31, 31, 32, 32, 32, 32, 33, 33, 33, 34, 34, 34, 35, 35, 35, 36, 36, 36, 37, 37, 37, 37, 38, 38, 38, 39, 39, 39, 40,
- 40, 40, 41, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 44, 45, 45, 45, 46, 46, 46, 47, 47, 47, 48, 48, 48, 49, 49, 49, 49,
- 50, 50, 50, 51, 51, 51, 52, 52, 52, 53, 53, 53, 54, 54, 54, 54, 55, 55, 55, 56, 56, 56, 57, 57, 57, 58, 58, 58, 59, 59, 59,
- 60, 60, 60, 60, 61, 61, 61, 62, 62, 62, 63, 63};
- 
+//byte FadeConv[] = {0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10,
+//byte FadeConv[] = {0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10,
+// 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 17, 18, 18, 18, 19, 19, 19, 20, 20, 20,
+// 20, 21, 21, 21, 22, 22, 22, 23, 23, 23, 24, 24, 24, 25, 25, 25, 26, 26, 26, 26, 27, 27, 27, 28, 28, 28, 29, 29, 29, 30, 30,
+// 30, 31, 31, 31, 32, 32, 32, 32, 33, 33, 33, 34, 34, 34, 35, 35, 35, 36, 36, 36, 37, 37, 37, 37, 38, 38, 38, 39, 39, 39, 40,
+// 40, 40, 41, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 44, 45, 45, 45, 46, 46, 46, 47, 47, 47, 48, 48, 48, 49, 49, 49, 49,
+// 50, 50, 50, 51, 51, 51, 52, 52, 52, 53, 53, 53, 54, 54, 54, 54, 55, 55, 55, 56, 56, 56, 57, 57, 57, 58, 58, 58, 59, 59, 59,
+// 60, 60, 60, 60, 61, 61, 61, 62, 62, 62, 63, 63};
+
+//byte FadeConv[] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6,
+//6, 6, 7, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 14, 15,
+//15, 15, 15, 16, 16, 16, 16, 17, 17, 17, 18, 18, 18, 18, 19, 19, 19, 20, 20, 20, 20, 21, 21, 21, 22, 22, 22, 23, 23, 23, 24, 24,
+//24, 24, 25, 25, 25, 26, 26, 26, 27, 27, 27, 28, 28, 28, 29, 29, 29, 30, 30, 30, 31, 31, 32, 32, 32, 33, 33, 33, 34, 34, 34, 35,
+//35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 39, 40, 40, 40, 41, 41, 42, 42, 42, 43, 43, 44, 44, 45, 45, 45, 46, 46, 47, 47, 48,
+//48, 48, 49, 49, 50, 50, 51, 51, 51, 52, 52, 53, 53, 54, 54, 55, 55, 56, 56, 57, 57, 58, 58, 59, 59, 59, 60, 60, 61, 61, 62, 62, 63};
+
+byte FadeConv[] = {0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 16, 16, 16, 16, 17, 17, 17, 17, 18, 18, 18, 19, 19, 19, 19, 20, 20, 20, 21, 21, 21, 21, 22, 22, 22, 23, 23, 23, 23, 24, 24, 24, 25, 25, 25, 25, 26, 26, 26, 27, 27, 27, 28, 28, 28, 28, 29, 29, 29, 30, 30, 30, 31, 31, 31, 32, 32, 32, 33, 33, 33, 34, 34, 34, 35, 35, 35, 35, 36, 36, 36, 37, 37, 38, 38, 38, 39, 39, 39, 40, 40, 40, 41, 41, 41, 42, 42, 42, 43, 43, 43, 44, 44, 45, 45, 45, 46, 46, 46, 47, 47, 48, 48, 48, 49, 49, 49, 50, 50, 51, 51, 51, 52, 52, 53, 53, 53, 54, 54, 55, 55, 55, 56, 56, 57, 57, 57, 58, 58, 59, 59, 60, 60, 60, 61, 61, 62, 62, 63, 63};
+
+
 void TakeHigh(byte LEDline)
 {
   switch( LEDline )
@@ -471,7 +482,7 @@ unsigned int t;
 
   HrDisp = (HrNow + 6);  // Offset by 6 h to project *shadow* in the right place.
   
-  if (FadeMode == 2) {
+  if (FadeMode == 3) {
     if ( (SettingTime == 0) && (MinNow > 30) )  // If half the hour has gone by, (wbp)
       HrDisp += 1;  // advance the hour hand (wbp)
   }
@@ -502,8 +513,12 @@ unsigned int t;
   {
   case 0:  // no fading
     break;
-  case 1:  // original fading
-  case 2:  // move hour hand at 31 minutes
+  case 1:  // straddle 2 LEDs for odd seconds
+    if (SecNow & 1)  // ODD second
+      SecFade2 = 32;
+    break;
+  case 2:  // original fading
+  case 3:  // move hour hand at 31 minutes
     // Normal time display
     if (SecNow & 1)  // ODD second
     {
@@ -517,14 +532,14 @@ unsigned int t;
       }
     }
 
-    if ( ((MinNow == 59) && (FadeMode == 1)) || ((MinNow == 30) && (FadeMode == 2)) )  // end of the hour or second half of the hour (wbp)
+    if ( ((MinNow == 59) && (FadeMode == 2)) || ((MinNow == 30) && (FadeMode == 3)) )  // end of the hour or second half of the hour (wbp)
     {
       if (SecNow == 59){
         HrFade2 = SecFade2;
       }
     }
     break;
-  case 3:  // continuous fading
+  case 4:  // continuous fading
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
     SecFade2 = msNow*63/2000;
@@ -533,7 +548,7 @@ unsigned int t;
     MinFade2 = SecNow*63/120;  // fade minute hand slowly
     HrFade2 = MinNow*63/60;  // fade hour hand slowly
     break;
-  case 4:  // continuous logarithmic fading
+  case 5:  // continuous logarithmic fading
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
     SecFade2 = FadeConv[msNow/10];  // 0 to 63
@@ -861,15 +876,11 @@ SIGNAL(TIMER1_COMPA_vect)
 
 #define count_max 254
 #define select_max 8
-//unsigned int mpx_count = 0;
 byte mpx_count = 0;
 byte mpx_select = 0;
 void DisplayMPX(void)  // called at 0.025 ms intervals; does not loop
 {
-//  sei();  // enable interrupts
   mpx_count ++;
-//  if (mpx_count > count_max)  // this test should not be necessary...
-//    NextLED();
   switch(mpx_select)
   {
     case 0:
@@ -1518,17 +1529,18 @@ void loop()
   }
 
 // set brightness for each of 6 LED's
-// MainBright = 0 to 8
+// MainBright = 1 to 8
 // xxFaden = 0 to 63
 // xxBright = 1 to 63 ???
-// dn = 0 to 63*63*8/128 = 0 to 248
+// dn = 63*63*8/128 = 0 to 248
 //  cli();
-  D0 = HourBright*HrFade1*MainBright >> 7 + 1;  // hbrt * fade * brt / 128
-  D1 = HourBright*HrFade2*MainBright >> 7 + 1;  // the "+1" eliminates small glitches at top of second
-  D2 = MinBright*MinFade1*MainBright >> 7 + 1;
-  D3 = MinBright*MinFade2*MainBright >> 7 + 1;
-  D4 = SecBright*SecFade1*MainBright >> 7 + 1;
-  D5 = SecBright*SecFade2*MainBright >> 7 + 1;
+  byte of = 1;
+  D0 = HourBright*HrFade1*MainBright >> 7 + of;  // hbrt * fade * brt / 128
+  D1 = HourBright*HrFade2*MainBright >> 7 + of;  // the "+1" eliminates small glitches at top of second
+  D2 = MinBright*MinFade1*MainBright >> 7 + of;
+  D3 = MinBright*MinFade2*MainBright >> 7 + of;
+  D4 = SecBright*SecFade1*MainBright >> 7 + of;
+  D5 = SecBright*SecFade2*MainBright >> 7 + of;
   sei();
 
 
