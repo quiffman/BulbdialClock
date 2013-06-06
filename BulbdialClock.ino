@@ -72,7 +72,7 @@ Todo:
 
 #define CCWDefault 0
 #define FadeModeDefault 1
-#define FadeModes 5
+#define FadeModes 6
 
 #define AlignModeDefault 0
 
@@ -482,9 +482,11 @@ unsigned int t;
 
   HrDisp = (HrNow + 6);  // Offset by 6 h to project *shadow* in the right place.
   
-  if (FadeMode == 3) {
+  if ( (FadeMode == 2) || (FadeMode == 4)) {
     if ( (SettingTime == 0) && (MinNow > 30) )  // If half the hour has gone by, (wbp)
       HrDisp += 1;  // advance the hour hand (wbp)
+    if ( (OptionMode == 5) && (SecNow & 1) )  // If setting Fade modes, show hour hand "wiggle"
+      HrDisp += 1;
   }
 
   if ( HrDisp > 11)
@@ -517,29 +519,35 @@ unsigned int t;
     if (SecNow & 1)  // ODD second
       SecFade2 = 32;
     break;
-  case 2:  // original fading
-  case 3:  // move hour hand at 31 minutes
+  case 2:  // straddle 2 LEDs, move hour hand at 31 minutes
+    if (SecNow & 1)  // ODD second
+      SecFade2 = 32;
+    if (MinNow == 30)  // second half of the hour (wbp)
+    {
+      if (SecNow == 59)
+        HrFade2 = (msNow*63/1000);  // fade hour hand to new position
+    }
+    break;
+  case 3:  // original fading
+  case 4:  // move hour hand at 31 minutes
     // Normal time display
     if (SecNow & 1)  // ODD second
-    {
       SecFade2 = (msNow*63/1000);
-    }
-
     if (MinNow & 1)  // ODD minute
     {
       if ((SecNow == 59) || SettingTime) {
         MinFade2 = SecFade2;
       }
     }
-
-    if ( ((MinNow == 59) && (FadeMode == 2)) || ((MinNow == 30) && (FadeMode == 3)) )  // end of the hour or second half of the hour (wbp)
+    // fade the hour hand to it's next position, starting either at Minute 59 or Minute 30
+    if ( ((MinNow == 59) && (FadeMode == 3)) || ((MinNow == 30) && (FadeMode == 4)) )  // end of the hour or second half of the hour (wbp)
     {
       if (SecNow == 59){
         HrFade2 = SecFade2;
       }
     }
     break;
-  case 4:  // continuous fading
+  case 5:  // continuous fading
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
     SecFade2 = msNow*63/2000;
@@ -548,7 +556,7 @@ unsigned int t;
     MinFade2 = SecNow*63/120;  // fade minute hand slowly
     HrFade2 = MinNow*63/60;  // fade hour hand slowly
     break;
-  case 5:  // continuous logarithmic fading
+  case 6:  // continuous logarithmic fading
     if (SecNow & 1)  // Odd second
       msNow += 1000;  
     SecFade2 = FadeConv[msNow/10];  // 0 to 63
