@@ -447,7 +447,7 @@ void EESaveSettings (void){
   LastSavedBrightness = MainBright;
 
   // Optional: Blink LEDs off to indicate when we're writing to the EEPROM
-  Blink(200);  // Blink LEDs off to indicate saving data
+  Blink(100);  // Blink LEDs off to indicate saving data
 
 }
 
@@ -1514,6 +1514,7 @@ void loop()
 
   if (SleepMode || (VCRmode && (timeNow & 1))) {
     DisplayOn = false;
+    AllLEDsOff();
   }
   else
     DisplayOn = true;
